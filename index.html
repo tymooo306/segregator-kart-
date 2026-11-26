@@ -132,12 +132,12 @@ dialog.full .sh{padding-top:calc(var(--st) + 14px)}
     <div class="fig"><svg id="hSvg" aria-label="Wykres wartości kolekcji"></svg></div>
     <div class="small" id="hTip">Dotknij wykresu, żeby zobaczyć wartość z danego dnia.</div>
   </section>
+  <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px"><button id="setsBtn" style="white-space:nowrap;padding:0 8px;font-size:15px">📚 Przeglądaj sety</button><button id="manual" style="white-space:nowrap;padding:0 8px;font-size:15px">🔎 Dodaj ręcznie</button></div>
   <div class="bar">
     <input id="q" type="search" placeholder="Szukaj w kolekcji" aria-label="Szukaj w kolekcji">
     <select id="sort" aria-label="Sortuj"><option value="val">Najdroższe</option><option value="new">Najnowsze</option><option value="name">Nazwa</option><option value="set">Set</option></select>
   </div>
   <div class="grid" id="grid"></div>
-  <p style="margin-top:22px;display:grid;gap:8px"><button id="setsBtn" style="width:100%">📚 Przeglądaj sety</button><button id="manual" style="width:100%">Dodaj ręcznie (wyszukaj po nazwie)</button></p>
 </main>
 <button class="pri fab" id="scanBtn">📷 Skanuj kartę</button>
 
