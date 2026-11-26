@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Segregator Kart</title>
+<meta name="theme-color" content="#e3350d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Segregator">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:light dark;--bg:light-dark(#f6f5f1,#121214);--card:light-dark(#fff,#1d1d21);--ink:light-dark(#141416,#f2f1ec);--mute:light-dark(#6b6a66,#a3a29c);--line:light-dark(#e2e0d8,#33333a);--red:#e3350d;--redk:light-dark(#b8280a,#ff6a45);--ok:light-dark(#11803f,#4fd88a);--foil:linear-gradient(115deg,#ff7a9a,#ffd36b 25%,#7affc4 50%,#6bc6ff 75%,#c98bff);--st:env(safe-area-inset-top);--sb:env(safe-area-inset-bottom)}
+[hidden]{display:none!important}
+*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Archivo,-apple-system,system-ui,sans-serif;overflow-x:clip}
+main{max-width:1000px;margin:0 auto;padding:calc(var(--st) + 16px) max(16px,env(safe-area-inset-right)) calc(var(--sb) + 110px) max(16px,env(safe-area-inset-left))}
+h1{font-size:30px;line-height:1.05;margin:0;font-weight:800}
+.top{display:flex;justify-content:space-between;align-items:start;gap:10px}
+.ico{width:44px;height:44px;border-radius:12px;border:2px solid var(--line);background:var(--card);color:var(--ink);font-size:20px;display:grid;place-items:center;padding:0;cursor:pointer}
+.hero{margin-top:14px;border-radius:20px;padding:3px;background:var(--foil)}
+.heroin{background:var(--card);border-radius:17px;padding:16px 18px}
+.small{color:var(--mute);font-size:14px}
+.big{font-size:clamp(34px,10vw,52px);font-weight:800;line-height:1;color:var(--redk);white-space:nowrap}
+.row{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:baseline}
+.chg{font-weight:600;font-size:15px;white-space:nowrap}
+button,.btn{font:600 16px Archivo,sans-serif;min-height:46px;padding:0 16px;border-radius:12px;border:2px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
+button.pri{background:var(--red);border-color:var(--red);color:#fff}
+button:disabled{opacity:.5}
+input,select{font:16px Archivo,sans-serif;min-height:44px;padding:0 12px;border-radius:10px;border:2px solid var(--line);background:var(--card);color:var(--ink);width:100%}
+label{font-size:14px;color:var(--mute);display:grid;gap:4px}
+.bar{display:flex;gap:8px;margin:18px 0 12px}
+.bar input{flex:1}.bar select{flex:0 0 140px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+@media(max-width:600px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.c{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:7px;text-align:left;display:block;width:100%;color:var(--ink);font-weight:400;min-height:0}
+.im{aspect-ratio:63/88;border-radius:8px;overflow:hidden;background:var(--line);position:relative}
+.im img{width:100%;height:100%;object-fit:cover;display:block}
+.v{position:absolute;right:5px;bottom:5px;background:var(--red);color:#fff;font-weight:800;font-size:14px;padding:2px 7px;border-radius:7px;white-space:nowrap}
+.q{position:absolute;left:5px;top:5px;background:#141416;color:#fff;font-size:13px;padding:1px 7px;border-radius:7px}
+.rh{position:absolute;left:5px;bottom:5px;background:var(--foil);color:#141416;font-size:11px;font-weight:800;padding:1px 6px;border-radius:6px}
+.c h3{font-size:15px;margin:7px 2px 0;line-height:1.2}
+.c p{margin:2px;font-size:13px;color:var(--mute)}
+.empty{padding:36px 12px;text-align:center;color:var(--mute);border:2px dashed var(--line);border-radius:14px}
+.fab{white-space:nowrap;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--sb) + 18px);height:62px;padding:0 30px;border-radius:31px;font-size:18px;box-shadow:0 8px 24px #e3350d66;z-index:5}
+/* scanner */
+#scan{position:fixed;inset:0;background:#000;z-index:20;display:none}
+#scan.on{display:block}
+#vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#frame{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);width:min(72vw,calc(62vh*63/88));aspect-ratio:63/88;border-radius:16px;box-shadow:0 0 0 100vmax #000a;border:3px solid #fff}
+#frame::after{content:"";position:absolute;left:4%;right:4%;bottom:2%;height:9%;border:2px dashed #ffd36b;border-radius:6px}
+.shint{position:absolute;left:0;right:0;top:calc(var(--st) + 60px);text-align:center;color:#fff;font-weight:600;padding:0 20px;text-shadow:0 1px 4px #000}
+.sbar{position:absolute;left:0;right:0;bottom:calc(var(--sb) + 24px);display:flex;justify-content:center;align-items:center;gap:28px}
+.shut{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:#ffffff33;padding:0}
+.sbtn{color:#fff;border-color:#fff;min-width:96px}
+#sclose{position:absolute;top:calc(var(--st) + 10px);right:14px;color:#fff;border-color:#fff8;background:#0006}
+#sstat{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);background:#000c;color:#fff;padding:14px 20px;border-radius:14px;font-weight:600;display:none;text-align:center;max-width:80vw}
+/* sheets */
+dialog{overflow:auto;border:0;padding:0;background:var(--card);color:var(--ink);width:100%;max-width:600px;max-height:90vh;margin:auto auto 0;border-radius:20px 20px 0 0}
+@media(min-width:700px){dialog{margin:auto;border-radius:20px}}
+dialog::backdrop{background:#000a}
+.sh{padding:18px 18px calc(var(--sb) + 18px);display:grid;gap:12px}
+.sh h2{margin:0;font-size:22px;line-height:1.15}
+.cand{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:12px;align-items:center;padding:8px;border:2px solid var(--line);border-radius:12px;background:transparent;text-align:left;color:var(--ink);font-weight:400;width:100%;min-height:0}
+.cand img{width:72px;border-radius:6px;display:block}
+.cand b{display:block;font-size:16px}
+.cand .pr{font-weight:800;white-space:nowrap}
+.cand.sel{border-color:var(--red);background:light-dark(#fff3ef,#2c1a16)}
+.list{display:grid;gap:8px;max-height:46vh;overflow:auto}
+.dh{display:grid;grid-template-columns:minmax(0,150px) minmax(0,1fr);gap:14px;align-items:start}
+.dh img{width:100%;border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+td{padding:5px 0;border-bottom:1px solid var(--line)}td:last-child{text-align:right;font-weight:600;white-space:nowrap}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.note{font-size:13px;color:var(--mute)}
+.err{color:var(--redk);font-weight:600}
+dialog.full{max-width:1000px;height:100vh;max-height:100vh;margin:0 auto;border-radius:0}
+dialog.full .sh{padding-top:calc(var(--st) + 14px)}
+.slist{display:grid;gap:8px;margin-top:8px}
+.srow{display:grid;grid-template-columns:90px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px;border:2px solid var(--line);border-radius:12px;background:transparent;color:var(--ink);text-align:left;font-weight:400;width:100%;min-height:0}
+.srow img{width:90px;height:40px;object-fit:contain}
+.srow b{display:block}
+.srow .own{font-weight:800;white-space:nowrap;color:var(--redk)}
+.shead{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;align-items:center}
+.shead img{width:120px;max-height:60px;object-fit:contain}
+.prog{height:10px;border-radius:5px;background:var(--line);overflow:hidden}.prog i{display:block;height:100%;background:var(--foil);width:0}
+.c.miss .im img{filter:grayscale(1);opacity:.45}
+.c .ok{position:absolute;right:5px;top:5px;background:var(--ok);color:#fff;font-weight:800;font-size:13px;padding:1px 7px;border-radius:7px}
+.chartbox{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 14px 10px}
+.chead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.seg{display:flex;gap:4px}.seg button{min-height:34px;padding:0 10px;font-size:14px;border-width:1px;border-color:var(--line)}.seg button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.fig{position:relative;height:170px;margin-top:8px}.fig>svg{position:absolute;inset:0;width:100%;height:100%;touch-action:pan-y;overflow:visible}
+.small-fig{height:150px}
+.cardimg{display:block;width:min(72vw,300px);margin:0 auto;padding:0;border:0;background:none;min-height:0;border-radius:14px;overflow:hidden;box-shadow:0 12px 30px #0006}
+.cardimg img{width:100%;display:block;aspect-ratio:63/88;object-fit:cover;background:var(--line)}
+.links{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.links a{font-size:15px;min-height:44px;padding:0 10px;border-width:1px;border-color:var(--line)}
+.links a.main{background:var(--red);border-color:var(--red);color:#fff;grid-column:1/-1;font-size:16px}
+.sub{margin:6px 0 0;font-size:17px}
+.brow{display:grid;grid-template-columns:7.5em minmax(0,1fr) auto;gap:8px;align-items:center;font-size:14px;margin:5px 0}
+.brow i{display:block;height:12px;border-radius:6px;background:var(--foil)}.brow b{white-space:nowrap}
+#zoom{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;border:0;background:#000e;display:grid;place-items:center;padding:20px}
+#zoom[hidden]{display:none}
+#zoom img{max-width:100%;max-height:100%;border-radius:16px}
+#toast{inset:auto auto calc(var(--sb) + 96px) 50%;margin:0;border:0;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--sb) + 96px);background:#141416;color:#fff;padding:10px 16px;border-radius:12px;font-weight:600;z-index:30;display:none;max-width:90vw;text-align:center}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div><h1>Segregator kart</h1><div class="small" id="cnt">Kolekcja jest pusta</div></div>
+    <div style="display:flex;gap:8px"><button class="ico" id="refresh" aria-label="Odśwież ceny">⟳</button><button class="ico" id="setBtn" aria-label="Ustawienia">⚙</button></div>
+  </div>
+  <section class="hero"><div class="heroin">
+    <div class="small">Wartość kolekcji (Cardmarket, trend)</div>
+    <div class="row"><span class="big" id="total">0 zł</span><span class="chg" id="chg"></span></div>
+    <div class="small" id="upd">Ceny Cardmarket na żywo (Pokémon TCG API + TCGdex)</div>
+  </div></section>
+  <section class="chartbox">
+    <div class="chead"><b>Wartość kolekcji w czasie</b><div class="seg" id="hRange"><button data-r="7">7 dni</button><button data-r="30" class="on">30 dni</button><button data-r="0">Wszystko</button></div></div>
+    <div class="fig"><svg id="hSvg" aria-label="Wykres wartości kolekcji"></svg></div>
+    <div class="small" id="hTip">Dotknij wykresu, żeby zobaczyć wartość z danego dnia.</div>
+  </section>
+  <div class="bar">
+    <input id="q" type="search" placeholder="Szukaj w kolekcji" aria-label="Szukaj w kolekcji">
+    <select id="sort" aria-label="Sortuj"><option value="val">Najdroższe</option><option value="new">Najnowsze</option><option value="name">Nazwa</option><option value="set">Set</option></select>
+  </div>
+  <div class="grid" id="grid"></div>
+  <p style="margin-top:22px;display:grid;gap:8px"><button id="setsBtn" style="width:100%">📚 Przeglądaj sety</button><button id="manual" style="width:100%">Dodaj ręcznie (wyszukaj po nazwie)</button></p>
+</main>
+<button class="pri fab" id="scanBtn">📷 Skanuj kartę</button>
+
+<div id="scan" aria-modal="true" role="dialog" aria-label="Skaner">
+  <video id="vid" playsinline muted autoplay></video>
+  <div id="frame"></div>
+  <div class="shint">Ustaw kartę w ramce. Numer karty (np. 025/165) w żółtym polu.</div>
+  <button id="sclose" class="btn">Zamknij</button>
+  <div id="sstat"></div>
+  <div class="sbar">
+    <label class="btn sbtn" style="color:#fff">Galeria<input id="gal" type="file" accept="image/*" hidden></label>
+    <button class="shut" id="shoot" aria-label="Zrób zdjęcie"></button>
+    <button class="btn sbtn" id="torch" style="visibility:hidden">Latarka</button>
+  </div>
+</div>
+
+<dialog id="pick"><div class="sh">
+  <h2 id="pTitle">Która to karta?</h2>
+  <div class="two"><input id="pq" type="search" placeholder="Nazwa, np. Pikachu" aria-label="Nazwa karty"><input id="pn" placeholder="Numer, np. 25/165" aria-label="Numer karty"></div>
+  <button id="pSearch">Szukaj</button>
+  <div class="note" id="pNote"></div>
+  <div class="list" id="pList"></div>
+  <div class="two"><label>Wersja<select id="pVar"><option value="normal">Zwykła / Holo</option><option value="reverse">Reverse Holo</option></select></label><label>Ilość<input id="pQty" type="number" min="1" value="1" inputmode="numeric"></label></div>
+  <div class="btns"><button class="pri" id="pAdd" disabled style="flex:1">Dodaj do kolekcji</button><button id="pClose">Anuluj</button></div>
+</div></dialog>
+
+<dialog id="det"><div class="sh">
+  <div class="top"><span></span><button id="dClose">Zamknij</button></div>
+  <button class="cardimg" id="dZoom" aria-label="Powiększ kartę"><img id="dImg" alt=""></button>
+  <div><h2 id="dName"></h2><div class="small" id="dMeta"></div></div>
+  <div class="row"><span class="big" style="font-size:36px" id="dVal"></span><span class="small" id="dEach"></span></div>
+  <div class="links" id="dLinks"></div>
+  <h3 class="sub">Ceny na Cardmarket</h3>
+  <div id="dBars"></div>
+  <table id="dTab"></table>
+  <h3 class="sub">Historia ceny</h3>
+  <div class="fig small-fig"><svg id="dSvg" aria-label="Wykres ceny karty"></svg></div>
+  <div class="small" id="dTip"></div>
+  <div class="two"><label>Wersja<select id="dVar"><option value="normal">Zwykła / Holo</option><option value="reverse">Reverse Holo</option></select></label><label>Ilość<input id="dQty" type="number" min="1" inputmode="numeric"></label></div>
+  <div class="btns" id="dOwnBtns"><button class="pri" id="dSave" style="flex:1">Zapisz</button><button id="dDel">Usuń z kolekcji</button></div>
+  <div class="btns" id="dAddBtns"><button class="pri" id="dAdd" style="flex:1">Dodaj do kolekcji</button></div>
+  <div class="note" id="dOwnNote"></div>
+</div></dialog>
+<div id="zoom" hidden><img id="zImg" alt=""></div>
+
+<dialog id="set"><div class="sh">
+  <h2>Ustawienia</h2>
+  <label>Kurs EUR → PLN<input id="sRate" type="number" step="0.0001" inputmode="decimal"></label>
+  <div class="note" id="sRateNote"></div>
+  <label>Klucz API Pokémon TCG (opcjonalny, większy limit zapytań)<input id="sKey" autocomplete="off" placeholder="z dev.pokemontcg.io"></label>
+  <div class="btns"><button id="sExp">Eksportuj kopię</button><label class="btn">Importuj kopię<input id="sImp" type="file" accept=".json,application/json" hidden></label></div>
+  <div class="note">Kolekcja jest zapisana tylko w tym telefonie. Rób czasem kopię (Eksportuj → Zachowaj w Plikach).</div>
+  <div class="btns"><button class="pri" id="sSave" style="flex:1">Zapisz</button><button id="sClose">Zamknij</button></div>
+</div></dialog>
+<dialog id="sets" class="full"><div class="sh">
+  <div id="vList">
+    <div class="top"><h2>Sety</h2><button id="xClose">Zamknij</button></div>
+    <input id="xq" type="search" placeholder="Szukaj setu, np. 30th Anniversary, 151" aria-label="Szukaj setu" style="margin:12px 0 4px">
+    <div class="note" id="xNote"></div>
+    <div id="xList" class="slist"></div>
+  </div>
+  <div id="vSet" hidden>
+    <div class="top"><button id="xBack">← Sety</button><button id="xClose2">Zamknij</button></div>
+    <div class="shead"><img id="xLogo" alt=""><div><h2 id="xName"></h2><div class="small" id="xMeta"></div></div></div>
+    <div class="prog"><i id="xBar"></i></div>
+    <div class="small" id="xProg"></div>
+    <div class="two"><select id="xf" aria-label="Pokaż"><option value="all">Wszystkie</option><option value="miss">Brakujące</option><option value="have">Mam</option></select><select id="xs" aria-label="Sortuj"><option value="num">Wg numeru</option><option value="val">Najdroższe</option></select></div>
+    <div class="grid" id="xGrid" style="margin-top:4px"></div>
+  </div>
+</div></dialog>
+<div id="toast" role="status"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" defer></script>
+<script>
+{
+const API='https://api.pokemontcg.io/v2/cards';
+const FIELDS='id,name,number,rarity,set,images,cardmarket,tcgplayer';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ld=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch(e){return d}};
+const sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){toast('Brak miejsca na zapis!')}};
+let cards=ld('kolekcja',[]),cfg=ld('cfg',{rate:4.25,key:'',rateDate:''}),stream=null,track=null,worker=null,cands=[],selC=null,cur=null,shot=null;
+
+function toast(t){const e=$('toast');e.textContent=t;e.style.display='block';
+  try{if(e.showPopover){e.setAttribute('popover','manual');if(e.matches(':popover-open'))e.hidePopover();e.showPopover()}}catch(x){}
+  clearTimeout(toast.t);toast.t=setTimeout(()=>{e.style.display='none';try{e.hidePopover&&e.matches(':popover-open')&&e.hidePopover()}catch(x){}},2800)}
+const pln=e=>(e*cfg.rate).toLocaleString('pl-PL',{minimumFractionDigits:e*cfg.rate<100?2:0,maximumFractionDigits:e*cfg.rate<100?2:0})+' zł';
+function price(p,variant){p=p||{};return variant=='reverse'?(p.reverseHoloTrend||p.reverseHoloAvg30||p.reverseHoloSell||p.trendPrice||0):(p.trendPrice||p.avg30||p.averageSellPrice||p.lowPrice||p.reverseHoloTrend||p.reverseHoloAvg30||(p.usdMarket||0)*(cfg.usd2eur||0.92)||0)}
+const val=c=>price(c.prices,c.variant);
+const save=()=>sv('kolekcja',cards);
+
+async function get(url){
+  const h={};if(cfg.key)h['X-Api-Key']=cfg.key;
+  const r=await fetch(url,{headers:h});
+  if(r.status==429)throw new Error('Limit zapytań — spróbuj za chwilę lub dodaj klucz API w ustawieniach.');
+  if(!r.ok)throw new Error('Błąd bazy kart ('+r.status+')');
+  return r.json();
+}
+async function api(q,extra=''){
+  const h={};if(cfg.key)h['X-Api-Key']=cfg.key;
+  const r=await fetch(`${API}?q=${encodeURIComponent(q)}&select=${FIELDS}&pageSize=60${extra}`,{headers:h});
+  if(r.status==429)throw new Error('Limit zapytań — spróbuj za chwilę lub dodaj klucz API w ustawieniach.');
+  if(!r.ok)throw new Error('Błąd bazy kart ('+r.status+')');
+  return (await r.json()).data||[];
+}
+function fromApi(d){const um=Object.values(d.tcgplayer?.prices||{}).map(v=>v&&v.market).find(x=>x>0)||0;const pr={...(d.cardmarket?.prices||{})};for(const k in pr)if(!(+pr[k]>0))delete pr[k];if(um)pr.usdMarket=um;return{id:d.id,name:d.name,number:d.number,rarity:d.rarity||'',set:d.set?.name||'',setCode:d.set?.ptcgoCode||'',total:d.set?.printedTotal||'',release:d.set?.releaseDate||'',img:d.images?.small||'',imgL:d.images?.large||'',prices:pr,tpUrl:d.tcgplayer?.url||'',cmUrl:d.cardmarket?.url||'',cmUpd:d.cardmarket?.updatedAt||'',usd:Object.values(d.tcgplayer?.prices||{})[0]?.market||0}}
+
+const TDX='https://api.tcgdex.net/v2/en';
+function tdxPrices(cm){cm=cm||{};const o={trendPrice:cm.trend,avg1:cm.avg1,avg7:cm.avg7,avg30:cm.avg30,lowPrice:cm.low,averageSellPrice:cm.avg,reverseHoloTrend:cm['trend-holo'],reverseHoloAvg30:cm['avg30-holo']};for(const k in o)if(!(+o[k]>0))delete o[k];return o}
+function fromTdx(d,setInfo){const s=d.set||{},tp=d.pricing?.tcgplayer||{};const img=typeof d.image=='string'?d.image:'';
+  return{id:'tdx:'+d.id,tid:d.id,src:'tdx',name:d.name||'',number:d.localId||'',rarity:d.rarity||'',set:s.name||setInfo?.name||'',total:s.cardCount?.official||setInfo?.total||'',release:setInfo?.rel||'',
+    img:img?img+'/low.png':'',imgL:img?img+'/high.png':'',prices:Object.assign(tdxPrices(d.pricing?.cardmarket),((tp.normal||tp.holo||tp.reverse||{}).marketPrice>0)?{usdMarket:(tp.normal||tp.holo||tp.reverse).marketPrice}:{}),cmUrl:'',cmUpd:(d.pricing?.cardmarket?.updated||'').slice(0,10),usd:(tp.normal||tp.holo||tp.reverse||{}).marketPrice||0}}
+async function pool(items,n,fn){let i=0;await Promise.all(Array.from({length:Math.min(n,items.length)},async()=>{while(i<items.length){const k=i++;try{await fn(items[k],k)}catch(e){}}}))}
+const tdxCard=id=>get(TDX+'/cards/'+encodeURIComponent(id));
+let tdxSets=ld('tdxSets',null);
+async function tdxFindSet(name){
+  if(!tdxSets||Date.now()-tdxSets.t>86400e3){const j=await get(TDX+'/sets');tdxSets={t:Date.now(),d:j.map(s=>({id:s.id,name:s.name}))};sv('tdxSets',tdxSets)}
+  const n=x=>String(x).toLowerCase().replace(/[^a-z0-9]/g,'');const t=n(name);
+  return tdxSets.d.find(s=>n(s.name)==t)||tdxSets.d.find(s=>n(s.name).includes(t)||t.includes(n(s.name)));
+}
+const tdxSetCache={};
+async function tdxSetCards(setName){
+  if(tdxSetCache[setName])return tdxSetCache[setName];
+  const ts=await tdxFindSet(setName);if(!ts)return tdxSetCache[setName]=[];
+  const d=await get(TDX+'/sets/'+encodeURIComponent(ts.id));return tdxSetCache[setName]=d.cards||[];
+}
+const hasCM=p=>p&&(p.trendPrice||p.avg30||p.averageSellPrice||p.lowPrice||p.reverseHoloTrend);
+async function enrich(list,onStep){
+  const need=list.filter(c=>c.src!='tdx'&&!hasCM(c.prices));if(!need.length)return 0;let got=0;
+  const bySet={};need.forEach(c=>(bySet[c.set]=bySet[c.set]||[]).push(c));
+  for(const s in bySet){
+    let tc=[];try{tc=await tdxSetCards(s)}catch(e){continue}
+    if(!tc.length)continue;
+    await pool(bySet[s],6,async c=>{
+      const n=String(c.number).toUpperCase();const m=tc.find(x=>String(x.localId).toUpperCase()==n)||tc.find(x=>/^\d+$/.test(n)&&parseInt(x.localId,10)==parseInt(n,10)&&/^\d+$/.test(x.localId));
+      if(!m)return;const d=await tdxCard(m.id);const pr=tdxPrices(d.pricing?.cardmarket);
+      if(hasCM(pr)){c.prices=Object.assign({},c.prices,pr);c.cmUpd=(d.pricing.cardmarket.updated||'').slice(0,10);c.pSrc='TCGdex';got++;onStep&&onStep()}
+      else{const tp=d.pricing?.tcgplayer||{};const um=(tp.normal||tp.holo||tp.reverse||{}).marketPrice;if(um>0&&!c.prices?.usdMarket){c.prices=Object.assign({},c.prices,{usdMarket:um});onStep&&onStep()}}
+    });
+  }
+  return got;
+}
+function render(){
+  const q=$('q').value.trim().toLowerCase(),s=$('sort').value;
+  const by={val:(a,b)=>val(b)-val(a),new:(a,b)=>b.added-a.added,name:(a,b)=>a.name.localeCompare(b.name,'pl'),set:(a,b)=>(b.release||'').localeCompare(a.release||'')||(parseInt(a.number)||0)-(parseInt(b.number)||0)};
+  const list=cards.filter(c=>!q||[c.name,c.set,c.number,c.rarity].join(' ').toLowerCase().includes(q)).sort(by[s]);
+  const tot=cards.reduce((t,c)=>t+val(c)*c.qty,0),n=cards.reduce((t,c)=>t+c.qty,0);
+  $('total').textContent=pln(tot);
+  const prev=ld('prevTotal',null);
+  if(prev!=null&&cards.length){const d=tot-prev;$('chg').textContent=Math.abs(d)<0.005?'':(d>0?'▲ +':'▼ ')+pln(d).replace('-','−');$('chg').style.color=d>0?'var(--ok)':'var(--redk)'}else $('chg').textContent='';
+  const lu=ld('lastUpd',0);$('upd').textContent=lu?'Ceny odświeżone '+new Date(lu).toLocaleString('pl-PL',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+` · 1 € = ${cfg.rate.toFixed(4)} zł`:'Ceny Cardmarket na żywo (Pokémon TCG API + TCGdex)';
+  $('cnt').textContent=n?`${n} ${n==1?'karta':(n%10>=2&&n%10<=4&&(n%100<10||n%100>=20))?'karty':'kart'}${cards.length>1?` · ${cards.length} różnych`:''}`:'Kolekcja jest pusta';
+  $('grid').innerHTML=list.length?list.map(c=>`<button class="c" data-id="${esc(c.id+'|'+c.variant)}"><div class="im">${c.img.startsWith('https://')?`<img loading="lazy" src="${esc(c.img)}" alt="">`:''}${c.qty>1?`<span class="q">×${c.qty}</span>`:''}${c.variant=='reverse'?'<span class="rh">REV</span>':''}<span class="v">${val(c)?esc(pln(val(c))):'brak ceny'}</span></div><h3>${esc(c.name)}</h3><p>${esc(c.set)} · ${esc(c.number)}/${esc(c.total)}</p></button>`).join(''):`<div class="empty" style="grid-column:1/-1">${cards.length?'Nic nie pasuje.':'Naciśnij „Skanuj kartę” i zrób zdjęcie pierwszej karty.'}</div>`;
+}
+
+/* ---------- kamera ---------- */
+async function openScan(){
+  $('scan').classList.add('on');$('sstat').style.display='none';
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
+    $('vid').srcObject=stream;await $('vid').play();
+    track=stream.getVideoTracks()[0];
+    const caps=track.getCapabilities?track.getCapabilities():{};$('torch').style.visibility=caps.torch?'visible':'hidden';
+  }catch(e){stat('Brak dostępu do aparatu. Zezwól w Ustawieniach → Safari → Aparat albo użyj „Galeria”.')}
+  initOCR();
+}
+function closeScan(){$('scan').classList.remove('on');if(stream)stream.getTracks().forEach(t=>t.stop());stream=null}
+function stat(t){const e=$('sstat');e.textContent=t;e.style.display=t?'block':'none'}
+let torchOn=false;$('torch').onclick=async()=>{try{torchOn=!torchOn;await track.applyConstraints({advanced:[{torch:torchOn}]})}catch(e){}};
+
+function initOCR(){
+  if(worker||!window.Tesseract)return worker;
+  worker=Tesseract.createWorker('eng',1,{}).catch(e=>{worker=null;throw e});
+  return worker;
+}
+function cropFromVideo(){
+  const v=$('vid'),f=$('frame').getBoundingClientRect(),vb=v.getBoundingClientRect();
+  const vw=v.videoWidth,vh=v.videoHeight;if(!vw)return null;
+  const sc=Math.max(vb.width/vw,vb.height/vh),ox=(vb.width-vw*sc)/2,oy=(vb.height-vh*sc)/2;
+  const sx=(f.left-vb.left-ox)/sc,sy=(f.top-vb.top-oy)/sc,sw=f.width/sc,sh=f.height/sc;
+  const cv=document.createElement('canvas');cv.width=630;cv.height=880;cv.getContext('2d').drawImage(v,sx,sy,sw,sh,0,0,630,880);return cv;
+}
+function cropFromImage(img){
+  const r=63/88;let w=img.width,h=img.height,sw,sh;if(w/h>r){sh=h;sw=h*r}else{sw=w;sh=w/r}
+  const cv=document.createElement('canvas');cv.width=630;cv.height=880;cv.getContext('2d').drawImage(img,(w-sw)/2,(h-sh)/2,sw,sh,0,0,630,880);return cv;
+}
+function strip(src,x,y,w,h,scale,thr){
+  const cv=document.createElement('canvas');cv.width=Math.round(630*w*scale);cv.height=Math.round(880*h*scale);
+  const g=cv.getContext('2d');g.imageSmoothingQuality='high';g.drawImage(src,630*x,880*y,630*w,880*h,0,0,cv.width,cv.height);
+  const d=g.getImageData(0,0,cv.width,cv.height),p=d.data;let sum=0;
+  for(let i=0;i<p.length;i+=4){const l=.3*p[i]+.59*p[i+1]+.11*p[i+2];p[i]=p[i+1]=p[i+2]=l;sum+=l}
+  if(thr){const m=sum/(p.length/4);let dark=0;for(let i=0;i<p.length;i+=4)if(p[i]<m)dark++;const inv=dark>p.length/8;for(let i=0;i<p.length;i+=4){let v=p[i]<m*.85?0:255;if(inv)v=255-v;p[i]=p[i+1]=p[i+2]=v}}
+  g.putImageData(d,0,0);return cv;
+}
+async function recognize(card){
+  shot=card.toDataURL('image/jpeg',.7);
+  stat('Czytam numer karty…');
+  let w;try{w=await initOCR()}catch(e){}
+  if(!w){stat('');closeScan();openPick({},'Nie udało się uruchomić skanera (sprawdź internet). Wpisz nazwę lub numer.');return}
+  let num=null,total=null,code=null,name='';
+  try{
+    await w.setParameters({tessedit_pageseg_mode:'11',tessedit_char_whitelist:'0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ'});
+    let txt='';
+    for(const t of [false,true]){
+      const r=await w.recognize(strip(card,0,.875,1,.125,2.6,t));txt+=' '+r.data.text;
+      const m=txt.replace(/[Oo]/g,'0').match(/(?:^|[^0-9])([A-Z]{0,3}\d{1,3})\s*\/\s*([A-Z]{0,3}\d{2,3})/);
+      if(m){num=m[1];total=m[2];break}
+    }
+    if(!num){const pm=txt.match(/\b(SVP|SWSH|SM|XY|BW)\s*0*(\d{1,3})\b/);if(pm){code=pm[1];num=pm[2]}}
+    stat('Czytam nazwę…');
+    await w.setParameters({tessedit_pageseg_mode:'7',tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzéÉ\'-. '});
+    const rn=await w.recognize(strip(card,.04,.025,.66,.075,2.2,false));
+    const bad=/^(basic|stage|hp|pokemon|pokémon|tera|ex|gx|vmax|vstar|evolves|from|trainer|item|supporter)$/i;
+    name=(rn.data.text.match(/[A-Za-zéÉ'.-]{3,}/g)||[]).filter(x=>!bad.test(x)).sort((a,b)=>b.length-a.length)[0]||'';
+  }catch(e){}
+  stat('Szukam w bazie…');
+  closeScan();stat('');
+  openPick({num,total,code,name});
+}
+$('shoot').onclick=()=>{const c=cropFromVideo();if(!c){stat('Aparat jeszcze się uruchamia…');return}if(track&&torchOn){}recognize(c)};
+$('gal').onchange=e=>{const f=e.target.files[0];e.target.value='';if(!f)return;const img=new Image();img.onload=()=>{URL.revokeObjectURL(img.src);recognize(cropFromImage(img))};img.src=URL.createObjectURL(f)};
+$('sclose').onclick=closeScan;$('scanBtn').onclick=openScan;
+
+/* ---------- wybór karty ---------- */
+function sim(a,b){a=a.toLowerCase();b=(b||'').toLowerCase();if(!b)return 0;if(a.includes(b)||b.includes(a))return 10;let s=0;for(let i=0;i<Math.min(a.length,b.length);i++)if(a[i]==b[i])s++;return s}
+async function openPick(o,msg){
+  $('pq').value=o.name||'';$('pn').value=o.num?(o.num.replace(/^0+(?=\d)/,'')+(o.total?'/'+o.total.replace(/^0+(?=\d)/,''):'')):'';
+  $('pVar').value='normal';$('pQty').value=1;selC=null;$('pAdd').disabled=true;$('pList').innerHTML='';
+  $('pTitle').textContent=o.num||o.name?'Która to karta?':'Dodaj kartę';
+  $('pNote').textContent=msg||'';
+  if(!$('pick').open)$('pick').showModal();
+  if(o.num||o.name)search(o.code);else if(!msg)$('pNote').textContent='Wpisz nazwę (po angielsku, jak na karcie) i/lub numer.';
+}
+async function search(code){
+  const name=$('pq').value.trim().replace(/["\\*]/g,''),nraw=$('pn').value.trim().toUpperCase();
+  const m=nraw.match(/^([A-Z]{0,4}\d{1,3})\s*(?:\/\s*([A-Z]{0,3}\d{1,3}))?$/);
+  const num=m?m[1].replace(/^0+(?=\d)/,''):'',tot=m&&m[2]?m[2].replace(/^0+(?=\d)/,''):'';
+  if(!name&&!num){$('pNote').textContent='Wpisz nazwę lub numer karty.';return}
+  $('pNote').textContent='Szukam…';$('pList').innerHTML='';
+  try{
+    let res=[];
+    const tries=[];
+    if(num&&/^\d+$/.test(tot))tries.push(`number:${num} set.printedTotal:${tot}`+(name?` name:"${name}*"`:''),`number:${num} set.printedTotal:${tot}`);
+    if(num&&code)tries.push(`number:${num} set.ptcgoCode:PR-${code=='SVP'?'SV':code}`);
+    if(num&&name)tries.push(`number:${num} name:"${name}*"`);
+    if(name)tries.push(`name:"${name}*"`);
+    if(num&&!name&&!tot)tries.push(`number:${num}`);
+    for(const t of tries){res=await api(t,'&orderBy=-set.releaseDate');if(res.length)break}
+    cands=res.map(fromApi);
+    if(!cands.length&&name){
+      $('pNote').textContent='Szukam w drugiej bazie…';
+      let brief=await get(TDX+'/cards?name='+encodeURIComponent(name));
+      if(num){const f=brief.filter(b=>parseInt(b.localId,10)==parseInt(num,10)||String(b.localId).toUpperCase()==num);if(f.length)brief=f}
+      brief=brief.slice(-15);const out=[];
+      await pool(brief,6,async b=>{const c=fromTdx(await tdxCard(b.id));if(!tot||String(c.total)==tot||brief.length<4)out.push(c)});
+      cands=out.length?out:[];
+    }
+    cands.sort((a,b)=>sim(b.name,name)-sim(a.name,name));
+    if(cands.some(c=>!hasCM(c.prices))){$('pNote').textContent='Pobieram ceny…';await enrich(cands.slice(0,15)).catch(()=>{})}
+    if(!cands.length){$('pNote').textContent='Nic nie znaleziono. Popraw nazwę lub numer i szukaj ponownie.';return}
+    $('pNote').textContent=cands.length==1?'Znaleziono kartę — sprawdź i dodaj.':`Znaleziono ${cands.length}. Wybierz tę, która wygląda jak Twoja.`;
+    $('pList').innerHTML=cands.map((c,i)=>`<button class="cand" data-i="${i}">${c.img.startsWith('https://')?`<img src="${esc(c.img)}" alt="" loading="lazy">`:'<span></span>'}<span><b>${esc(c.name)}</b><span class="small">${esc(c.set)} · ${esc(c.number)}/${esc(c.total)}${c.rarity?' · '+esc(c.rarity):''}</span></span><span class="pr">${price(c.prices)?esc(pln(price(c.prices))):'—'}</span></button>`).join('');
+    if(cands.length==1)choose(0);
+  }catch(e){$('pNote').innerHTML='<span class="err">'+esc(e.message.includes('fetch')?'Brak połączenia z bazą kart.':e.message)+'</span>'}
+}
+function choose(i){selC=cands[i];document.querySelectorAll('.cand').forEach(b=>b.classList.toggle('sel',+b.dataset.i===i));$('pAdd').disabled=false;
+  if(/reverse/i.test(selC.rarity))$('pVar').value='reverse'}
+$('pList').onclick=e=>{const b=e.target.closest('.cand');if(b)choose(+b.dataset.i)};
+$('pSearch').onclick=()=>search();
+$('pq').onkeydown=$('pn').onkeydown=e=>{if(e.key=='Enter'){e.preventDefault();search()}};
+$('pClose').onclick=()=>$('pick').close();
+$('pAdd').onclick=()=>{
+  if(!selC)return;const variant=$('pVar').value,qty=Math.max(1,parseInt($('pQty').value)||1);
+  const ex=cards.find(c=>c.id==selC.id&&c.variant==variant);
+  if(ex){ex.qty+=qty;Object.assign(ex,{prices:selC.prices,cmUpd:selC.cmUpd});toast(`Masz już tę kartę — teraz ×${ex.qty}`)}
+  else{const n={...selC,variant,qty,added:Date.now()};delete n.loading;cards.push(n);toast(`Dodano: ${selC.name} (${pln(price(selC.prices,variant))})`)}
+  sv('prevTotal',null);save();render();snapshot();$('pick').close();if($('sets').open&&curSet)renderSet();
+};
+
+/* ---------- sety ---------- */
+let allSets=ld('setsCache',null),curSet=null,setCards=[];
+const owned=id=>cards.filter(c=>c.id==id).reduce((t,c)=>t+c.qty,0);
+const numKey=n=>{const m=String(n).match(/^(\D*)(\d+)(.*)$/);return m?[m[1]?1:0,m[1],+m[2],m[3]]:[2,String(n),0,'']};
+const byNum=(a,b)=>{const x=numKey(a.number),y=numKey(b.number);return x[0]-y[0]||x[1].localeCompare(y[1])||x[2]-y[2]||x[3].localeCompare(y[3])};
+async function openSets(){
+  $('vList').hidden=false;$('vSet').hidden=true;if(!$('sets').open)$('sets').showModal();
+  if(!allSets||Date.now()-allSets.t>86400e3){
+    $('xNote').textContent='Wczytuję listę setów…';
+    try{const j=await get('https://api.pokemontcg.io/v2/sets?orderBy=-releaseDate&pageSize=250&select=id,name,series,printedTotal,total,releaseDate,images');
+      allSets={t:Date.now(),d:j.data.map(s=>({id:s.id,name:s.name,series:s.series,pt:s.printedTotal,total:s.total,rel:s.releaseDate,logo:s.images?.logo||'',sym:s.images?.symbol||''}))};sv('setsCache',allSets)}
+    catch(e){if(!allSets){$('xNote').innerHTML='<span class="err">'+esc(e.message.includes('fetch')?'Brak połączenia z bazą kart.':e.message)+'</span>';return}}
+  }
+  renderSets();
+}
+function renderSets(){
+  const q=$('xq').value.trim().toLowerCase().replace(/[^a-z0-9 ]/g,'');
+  const syn={anniversary:'celebration',rocznica:'celebration',rocznicowy:'celebration',jubileusz:'celebration'};
+  const words=q.split(/\s+/).filter(Boolean).map(w=>syn[w]||w);
+  const list=allSets.d.filter(s=>{const t=(s.name+' '+s.series+' '+s.id).toLowerCase().replace(/[^a-z0-9 ]/g,'');return words.every(w=>t.includes(w))});
+  const mine={};cards.forEach(c=>{const k=(c.set||'').toLowerCase();mine[k]=(mine[k]||new Set()).add(c.id)});
+  $('xNote').textContent=list.length?(q?`Znaleziono ${list.length}`:`${list.length} setów, od najnowszych`):'Nie ma takiego setu w bazie. Spróbuj innej nazwy (po angielsku) — nowe sety pojawiają się w bazie zwykle kilka dni po premierze.';
+  $('xList').innerHTML=list.slice(0,q?120:60).map(s=>{const n=mine[s.name.toLowerCase()]?.size||0;return`<button class="srow" data-id="${esc(s.id)}">${s.logo.startsWith('https://')?`<img src="${esc(s.logo)}" alt="" loading="lazy">`:'<span></span>'}<span><b>${esc(s.name)}</b><span class="small">${esc(s.series)} · ${esc((s.rel||'').slice(0,4))} · ${esc(s.total)} kart</span></span><span class="own">${n?n+'/'+esc(s.total):''}</span></button>`}).join('');
+}
+async function openSet(id){
+  curSet=allSets.d.find(s=>s.id==id);if(!curSet)return;
+  $('vList').hidden=true;$('vSet').hidden=false;$('xName').textContent=curSet.name;$('xLogo').src=curSet.logo.startsWith('https://')?curSet.logo:'';
+  $('xMeta').textContent=`${curSet.series} · premiera ${(curSet.rel||'').replace(/\//g,'.')}`;$('xGrid').innerHTML='<div class="empty" style="grid-column:1/-1">Wczytuję karty…</div>';$('xProg').textContent='';$('xBar').style.width=0;
+  $('sets').querySelector('.sh').scrollTop=0;$('sets').scrollTop=0;
+  try{
+    setCards=[];let page=1;
+    while(true){const j=await get(`${API}?q=${encodeURIComponent('set.id:'+id)}&select=${FIELDS}&pageSize=250&page=${page}`);setCards.push(...j.data.map(fromApi));if(setCards.length>=j.totalCount||!j.data.length)break;page++}
+    if(curSet.id!=id)return;
+    if(!setCards.length){await openTdxSet(id);return}
+    renderSet();
+    if(setCards.some(c=>!hasCM(c.prices))){
+      setCards.forEach(c=>{if(!hasCM(c.prices))c.loading=true});renderSet();
+      let t=0;await enrich(setCards,()=>{if(Date.now()-t>700){t=Date.now();if(curSet?.id==id)renderSet()}}).catch(()=>{});
+      setCards.forEach(c=>delete c.loading);
+    }
+    if(curSet?.id!=id)return;
+    for(const f of setCards)cards.filter(c=>c.id==f.id).forEach(c=>Object.assign(c,{prices:f.prices,cmUpd:f.cmUpd,cmUrl:f.cmUrl}));save();render();
+    renderSet();
+  }catch(e){$('xGrid').innerHTML='<div class="empty err" style="grid-column:1/-1">'+esc(e.message.includes('fetch')?'Brak połączenia z bazą kart.':e.message)+'</div>'}
+}
+async function openTdxSet(id){
+  $('xGrid').innerHTML='<div class="empty" style="grid-column:1/-1">Ten set jest nowy — pobieram karty z drugiej bazy (TCGdex)…</div>';
+  const ts=await tdxFindSet(curSet.name);
+  if(!ts){$('xGrid').innerHTML='<div class="empty" style="grid-column:1/-1">Karty z tego setu nie są jeszcze dostępne w żadnej bazie. Spróbuj za kilka dni.</div>';return}
+  const d=await get(TDX+'/sets/'+encodeURIComponent(ts.id));if(curSet?.id!=id)return;
+  const info={name:curSet.name,total:d.cardCount?.official||curSet.pt,rel:curSet.rel};
+  setCards=(d.cards||[]).map(b=>({...fromTdx({...b,set:{name:curSet.name,cardCount:{official:info.total}}},info),loading:true}));
+  if(d.logo&&!$('xLogo').getAttribute('src'))$('xLogo').src=d.logo+'.png';
+  renderSet();
+  let t=0;const tick=()=>{if(Date.now()-t>700){t=Date.now();renderSet()}};
+  await pool(setCards.slice(),6,async(c,k)=>{if(curSet?.id!=id)return;const f=fromTdx(await tdxCard(c.tid),info);const i=setCards.findIndex(x=>x.id==c.id);if(i>=0)setCards[i]=f;
+    cards.filter(x=>x.id==f.id).forEach(x=>Object.assign(x,{prices:f.prices,cmUpd:f.cmUpd,usd:f.usd}));tick()});
+  if(curSet?.id!=id)return;save();render();renderSet();
+}
+function renderSet(){
+  const f=$('xf').value,s=$('xs').value;
+  const have=setCards.filter(c=>owned(c.id)),tot=setCards.length;
+  const setVal=setCards.reduce((t,c)=>t+price(c.prices),0),haveVal=cards.filter(c=>setCards.some(x=>x.id==c.id)).reduce((t,c)=>t+val(c)*c.qty,0);
+  $('xBar').style.width=(tot?have.length/tot*100:0)+'%';
+  $('xProg').textContent=`Masz ${have.length} z ${tot} kart (${tot?Math.round(have.length/tot*100):0}%) · Twoje: ${pln(haveVal)} · cały set (po 1 szt.): ${pln(setVal)}`;
+  let list=setCards.filter(c=>f=='all'||(f=='have')==!!owned(c.id));
+  list.sort(s=='val'?(a,b)=>price(b.prices)-price(a.prices):byNum);
+  $('xGrid').innerHTML=list.length?list.map(c=>{const o=owned(c.id);return`<button class="c${o?'':' miss'}" data-id="${esc(c.id)}"><div class="im">${c.img.startsWith('https://')?`<img loading="lazy" src="${esc(c.img)}" alt="">`:''}${o?`<span class="ok">✓${o>1?' ×'+o:''}</span>`:''}<span class="v">${price(c.prices)?esc(pln(price(c.prices))):(c.loading?'…':'—')}</span></div><h3>${esc(c.name)}</h3><p>${esc(c.number)}/${esc(c.total)}${c.rarity?' · '+esc(c.rarity):''}</p></button>`}).join(''):`<div class="empty" style="grid-column:1/-1">${f=='miss'?'Masz komplet! 🎉':'Brak kart do pokazania.'}</div>`;
+}
+$('xGrid').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const c=setCards.find(x=>x.id==b.dataset.id);if(!c)return;const mine=cards.find(x=>x.id==c.id);openCard(mine?Object.assign(mine,{prices:c.prices}):c,mine||null)};
+$('xList').onclick=e=>{const b=e.target.closest('.srow');if(b)openSet(b.dataset.id)};
+$('xq').oninput=()=>allSets&&renderSets();$('xf').onchange=$('xs').onchange=renderSet;
+$('xBack').onclick=()=>{curSet=null;$('vSet').hidden=true;$('vList').hidden=false;renderSets()};
+$('xClose').onclick=$('xClose2').onclick=()=>{curSet=null;$('sets').close()};
+$('setsBtn').onclick=openSets;
+$('manual').onclick=()=>openPick({});
+
+/* ---------- historia ---------- */
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+let hist=ld('hist',[]),chist=ld('chist',{});
+function pushPt(arr,d,v){if(!(v>0))return arr;if(arr.length&&arr[arr.length-1][0]==d)arr[arr.length-1][1]=v;else arr.push([d,v]);if(arr.length>730)arr.splice(0,arr.length-730);return arr}
+function cardKey(c,variant){return c.id+'|'+(variant||c.variant||'normal')}
+function recCard(c,variant){const k=cardKey(c,variant);chist[k]=pushPt(chist[k]||[],today(),+price(c.prices,variant||c.variant).toFixed(2))}
+function snapshot(){
+  if(!cards.length)return;const d=today();
+  const tot=cards.reduce((t,c)=>t+val(c)*c.qty,0);
+  const last=hist.length&&hist[hist.length-1];
+  if(last&&last.d==d)last.v=+tot.toFixed(2);else if(tot>0)hist.push({d,v:+tot.toFixed(2)});
+  cards.forEach(c=>recCard(c));
+  sv('hist',hist);sv('chist',chist);drawHist();
+}
+function lineChart(svg,pts,tipEl,emptyMsg){
+  svg._pts=pts;svg._tip=tipEl;svg._empty=emptyMsg;
+  if(!svg._ro){svg._ro=new ResizeObserver(()=>drawChart(svg));svg._ro.observe(svg);
+    const move=e=>{const p=svg._pts;if(!p||p.length<2)return;const r=svg.getBoundingClientRect();const x=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
+      let best=0,bd=1e9;p.forEach((q,i)=>{const dx=Math.abs(svg._xs[i]-x);if(dx<bd){bd=dx;best=i}});
+      const g=svg.querySelector('.hov');if(g){g.setAttribute('transform',`translate(${svg._xs[best]},0)`);g.style.display='';g.querySelector('circle').setAttribute('cy',svg._ys[best])}
+      if(svg._tip)svg._tip.textContent=`${new Date(p[best].t).toLocaleDateString('pl-PL',{day:'numeric',month:'long',year:'numeric'})}: ${pln(p[best].v)}`};
+    svg.addEventListener('pointermove',move);svg.addEventListener('pointerdown',move);}
+  drawChart(svg);
+}
+function drawChart(svg){
+  const pts=svg._pts||[],W=svg.clientWidth,H=svg.clientHeight;if(!W||!H)return;
+  if(pts.length<2){svg.innerHTML=`<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="currentColor" opacity=".6" font-size="14">${esc(svg._empty||'Za mało danych')}</text>`;return}
+  const L=8,R=8,T=18,B=22,t0=pts[0].t,t1=pts[pts.length-1].t||t0+1;let lo=Math.min(...pts.map(p=>p.v)),hi=Math.max(...pts.map(p=>p.v));
+  if(hi-lo<0.01){hi+=1;lo=Math.max(0,lo-1)}const pad=(hi-lo)*.12;lo=Math.max(0,lo-pad);hi+=pad;
+  const X=t=>L+(W-L-R)*((t-t0)/((t1-t0)||1)),Y=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo));
+  svg._xs=pts.map(p=>X(p.t));svg._ys=pts.map(p=>Y(p.v));
+  const line=pts.map((p,i)=>(i?'L':'M')+svg._xs[i].toFixed(1)+' '+svg._ys[i].toFixed(1)).join('');
+  const up=pts[pts.length-1].v>=pts[0].v,col=up?'#16a34a':'#e3350d',id='g'+Math.random().toString(36).slice(2,7);
+  const fd=t=>new Date(t).toLocaleDateString('pl-PL',{day:'numeric',month:'short'});
+  const lx=svg._xs[pts.length-1],ly=svg._ys[pts.length-1];
+  svg.innerHTML=`<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".35"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+  <line x1="${L}" x2="${W-R}" y1="${Y(hi-pad)}" y2="${Y(hi-pad)}" stroke="currentColor" stroke-opacity=".12" stroke-dasharray="3 4"/>
+  <line x1="${L}" x2="${W-R}" y1="${Y(lo+pad)}" y2="${Y(lo+pad)}" stroke="currentColor" stroke-opacity=".12" stroke-dasharray="3 4"/>
+  <text x="${W-R}" y="${Y(hi-pad)-5}" text-anchor="end" font-size="12" fill="currentColor" opacity=".6">${esc(pln(hi-pad))}</text>
+  <text x="${W-R}" y="${Y(lo+pad)+14}" text-anchor="end" font-size="12" fill="currentColor" opacity=".6">${esc(pln(lo+pad))}</text>
+  <path d="${line}L${lx.toFixed(1)} ${H-B}L${L} ${H-B}Z" fill="url(#${id})"/>
+  <path d="${line}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="${lx}" cy="${ly}" r="4.5" fill="${col}"/>
+  <text x="${L}" y="${H-5}" font-size="12" fill="currentColor" opacity=".6">${fd(t0)}</text>
+  <text x="${W-R}" y="${H-5}" font-size="12" text-anchor="end" fill="currentColor" opacity=".6">${fd(t1)}</text>
+  <g class="hov" style="display:none"><line y1="${T-6}" y2="${H-B}" stroke="currentColor" stroke-opacity=".4"/><circle r="5" fill="${col}" stroke="var(--card)" stroke-width="2"/></g>`;
+}
+let hRange=30;
+function drawHist(){
+  const cut=hRange?Date.now()-hRange*86400e3:0;
+  const pts=hist.map(x=>({t:new Date(x.d+'T12:00').getTime(),v:x.v})).filter(p=>p.t>=cut);
+  lineChart($('hSvg'),pts,$('hTip'),cards.length?'Wykres zbiera dane od dziś — wróć jutro':'Dodaj karty, żeby śledzić wartość');
+}
+$('hRange').onclick=e=>{const b=e.target.closest('button');if(!b)return;hRange=+b.dataset.r;document.querySelectorAll('#hRange button').forEach(x=>x.classList.toggle('on',x===b));drawHist()};
+
+/* ---------- podgląd karty ---------- */
+let viewC=null;
+function shopLinks(c){
+  const q=c.name+' '+String(c.number).replace(/^0+(?=\d)/,'')+(c.total?'/'+c.total:'');
+  const qn=encodeURIComponent(q),qs=encodeURIComponent(c.name+' '+c.set);
+  const cm=c.cmUrl&&c.cmUrl.startsWith('https://')?c.cmUrl:'https://www.cardmarket.com/pl/Pokemon/Products/Search?searchString='+encodeURIComponent(c.name);
+  const tp=c.tpUrl&&c.tpUrl.startsWith('https://')?c.tpUrl:'https://www.tcgplayer.com/search/pokemon/product?q='+qs;
+  return [['Kup / sprzedaj na Cardmarket ↗',cm,'main'],['Allegro ↗','https://allegro.pl/listing?string='+qn],['OLX ↗','https://www.olx.pl/oferty/q-'+encodeURIComponent(q.replace(/\//g,' ').replace(/\s+/g,'-'))+'/'],['eBay ↗','https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent('pokemon '+q)],['TCGplayer ↗',tp]];
+}
+function openCard(c,mine){
+  viewC=c;cur=mine||null;const variant=mine?mine.variant:(/reverse/i.test(c.rarity)?'reverse':'normal');
+  const im=(c.imgL||c.img||'');$('dImg').src=im.startsWith('https://')?im:'';$('zImg').src=$('dImg').src;
+  $('dName').textContent=c.name;$('dMeta').textContent=`${c.set} · ${c.number}/${c.total}${c.rarity?' · '+c.rarity:''}`;
+  const pv=price(c.prices,variant);
+  $('dVal').textContent=pv?pln(mine?pv*mine.qty:pv):'brak ceny';$('dEach').textContent=mine&&mine.qty>1?`${pln(pv)} za szt. · masz ×${mine.qty}`:(mine?'w Twojej kolekcji':'');
+  $('dLinks').innerHTML=shopLinks(c).map(l=>`<a class="btn ${l[2]||''}" href="${esc(l[1])}" target="_blank" rel="noopener">${esc(l[0])}</a>`).join('');
+  const p=c.prices||{};
+  const bars=[['Średnia 30 dni',p.avg30],['Średnia 7 dni',p.avg7],['Wczoraj',p.avg1],['Trend',p.trendPrice]].filter(r=>r[1]>0),mx=Math.max(...bars.map(b=>b[1]),0);
+  $('dBars').innerHTML=bars.length?bars.map(b=>`<div class="brow"><span>${b[0]}</span><i style="width:${Math.max(4,b[1]/mx*100).toFixed(0)}%"></i><b>${esc(pln(b[1]))}</b></div>`).join('')+(bars.length>1&&p.avg30&&p.trendPrice?`<div class="small">${p.trendPrice>=p.avg30?'▲':'▼'} ${Math.abs((p.trendPrice/p.avg30-1)*100).toFixed(0)}% względem średniej z 30 dni</div>`:''):'';
+  const rows=[['Najniższa oferta',p.lowPrice],['Reverse Holo — trend',p.reverseHoloTrend]].filter(r=>r[1]>0);
+  if(!hasCM(p)&&p.usdMarket)rows.push(['Szacunek z TCGplayer',p.usdMarket*(cfg.usd2eur||0.92)]);
+  $('dTab').innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${esc(pln(r[1]))} <span class="small">(${(+r[1]).toFixed(2)} €)</span></td></tr>`).join('')+(c.cmUpd?`<tr><td class="small">Dane z dnia</td><td class="small">${esc(c.cmUpd)}</td></tr>`:'')+(!bars.length&&!rows.length?'<tr><td>Brak cen dla tej karty w bazach.</td><td></td></tr>':'');
+  recCard(c,variant);sv('chist',chist);
+  const hp=(chist[cardKey(c,variant)]||[]).map(x=>({t:new Date(x[0]+'T12:00').getTime(),v:x[1]}));
+  $('dTip').textContent=hp.length>1?'Dotknij wykresu, żeby zobaczyć cenę z danego dnia.':'Aplikacja zapisuje cenę tej karty codziennie przy odświeżaniu — wykres będzie rósł z czasem.';
+  $('dVar').value=variant;$('dQty').value=mine?mine.qty:1;
+  $('dOwnBtns').hidden=!mine;$('dAddBtns').hidden=!!mine;$('dDel').textContent='Usuń z kolekcji';
+  const o=owned(c.id);$('dOwnNote').textContent=!mine&&o?`Masz już ${o} szt. tej karty — dodanie zwiększy ilość.`:'';
+  $('det').showModal();$('det').scrollTop=0;
+  lineChart($('dSvg'),hp,$('dTip'),'Historia zbiera się od dziś');
+}
+$('grid').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const [id,v]=b.dataset.id.split('|');const c=cards.find(x=>x.id==id&&x.variant==v);if(c)openCard(c,c)};
+$('dZoom').onclick=()=>{if($('zImg').src){$('zoom').hidden=false;try{$('zoom').setAttribute('popover','manual');$('zoom').showPopover()}catch(e){}}};
+$('zoom').onclick=()=>{$('zoom').hidden=true;try{$('zoom').hidePopover()}catch(e){}};
+$('dClose').onclick=()=>$('det').close();
+$('dVar').onchange=()=>{if(viewC){const pv=price(viewC.prices,$('dVar').value);$('dVal').textContent=pv?pln(pv*(cur?cur.qty:1)):'brak ceny'}};
+$('dSave').onclick=()=>{if(!cur)return;const v=$('dVar').value,q=Math.max(1,parseInt($('dQty').value)||1);const other=cards.find(c=>c!==cur&&c.id==cur.id&&c.variant==v);
+  if(other){other.qty+=q;cards=cards.filter(c=>c!==cur)}else{cur.variant=v;cur.qty=q}sv('prevTotal',null);save();render();snapshot();$('det').close();if($('sets').open&&curSet)renderSet()};
+$('dDel').onclick=()=>{if(!cur)return;if($('dDel').textContent!='Na pewno?'){$('dDel').textContent='Na pewno?';return}cards=cards.filter(c=>c!==cur);sv('prevTotal',null);save();render();snapshot();$('det').close();toast('Usunięto kartę');if($('sets').open&&curSet)renderSet()};
+$('dAdd').onclick=()=>{const c=viewC;if(!c)return;const variant=$('dVar').value,qty=Math.max(1,parseInt($('dQty').value)||1);
+  const ex=cards.find(x=>x.id==c.id&&x.variant==variant);
+  if(ex){ex.qty+=qty;ex.prices=c.prices;toast(`Masz już tę kartę — teraz ×${ex.qty}`)}else{const n={...c,variant,qty,added:Date.now()};delete n.loading;cards.push(n);toast(`Dodano: ${c.name}`)}
+  sv('prevTotal',null);save();render();snapshot();$('det').close();if($('sets').open&&curSet)renderSet()};
+
+/* ---------- odświeżanie cen ---------- */
+async function refresh(silent){
+  if(!cards.length)return;$('refresh').disabled=true;if(!silent)toast('Odświeżam ceny…');
+  const before=cards.reduce((t,c)=>t+val(c)*c.qty,0);
+  try{
+    const ids=[...new Set(cards.filter(c=>c.src!='tdx').map(c=>c.id))];
+    for(let i=0;i<ids.length;i+=40){
+      const res=await api('('+ids.slice(i,i+40).map(id=>`id:"${id}"`).join(' OR ')+')','&pageSize=250');
+      for(const d of res){const f=fromApi(d);cards.filter(c=>c.id==f.id).forEach(c=>Object.assign(c,{prices:f.prices,cmUrl:f.cmUrl,cmUpd:f.cmUpd,usd:f.usd,img:f.img,imgL:f.imgL}))}
+    }
+    await enrich(cards).catch(()=>{});
+    const tids=[...new Set(cards.filter(c=>c.src=='tdx').map(c=>c.tid))];
+    await pool(tids,6,async tid=>{const f=fromTdx(await tdxCard(tid));cards.filter(c=>c.id==f.id).forEach(c=>Object.assign(c,{prices:f.prices,cmUpd:f.cmUpd,usd:f.usd,rarity:f.rarity||c.rarity}))});
+    sv('prevTotal',before);sv('lastUpd',Date.now());save();render();snapshot();if(!silent)toast('Ceny zaktualizowane');
+  }catch(e){if(!silent)toast(e.message.includes('fetch')?'Brak internetu':e.message)}
+  $('refresh').disabled=false;
+}
+$('refresh').onclick=()=>refresh();
+async function rateUsd(){try{const r=await fetch('https://api.nbp.pl/api/exchangerates/rates/a/usd/?format=json');const j=await r.json();const m=j.rates?.[0]?.mid;if(m>0&&cfg.rate>0){cfg.usd2eur=m/cfg.rate;sv('cfg',cfg)}}catch(e){}}
+async function rate(){
+  const today=new Date().toISOString().slice(0,10);if(cfg.rateDate==today)return;
+  try{const r=await fetch('https://api.nbp.pl/api/exchangerates/rates/a/eur/?format=json');const j=await r.json();const m=j.rates?.[0]?.mid;if(m>0){cfg.rate=m;cfg.rateDate=today;cfg.rateSrc=j.rates[0].effectiveDate;sv('cfg',cfg);await rateUsd();render()}}catch(e){}
+}
+
+/* ---------- ustawienia ---------- */
+$('setBtn').onclick=()=>{$('sRate').value=cfg.rate;$('sKey').value=cfg.key||'';$('sRateNote').textContent=cfg.rateSrc?`Kurs średni NBP z ${cfg.rateSrc}, aktualizowany automatycznie raz dziennie.`:'Kurs ustawiony ręcznie.';$('set').showModal()};
+$('sClose').onclick=()=>$('set').close();
+$('sSave').onclick=()=>{const r=parseFloat($('sRate').value);if(r>0&&r!=cfg.rate){cfg.rate=r;cfg.rateSrc=''}cfg.key=$('sKey').value.trim();sv('cfg',cfg);render();$('set').close()};
+$('sExp').onclick=async()=>{const blob=new Blob([JSON.stringify({app:'segregator',v:1,cards},null,1)],{type:'application/json'});const name='kolekcja-'+new Date().toISOString().slice(0,10)+'.json';
+  const file=new File([blob],name,{type:'application/json'});
+  try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:'Kopia kolekcji'});return}}catch(e){if(e.name=='AbortError')return}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)};
+$('sImp').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const j=JSON.parse(await f.text());if(!Array.isArray(j.cards))throw 0;
+  const ok=j.cards.filter(c=>c&&typeof c.id=='string'&&typeof c.name=='string').map(c=>({...c,qty:Math.max(1,parseInt(c.qty)||1),variant:c.variant=='reverse'?'reverse':'normal',img:String(c.img||''),imgL:String(c.imgL||''),added:+c.added||Date.now()}));
+  for(const c of ok){const ex=cards.find(x=>x.id==c.id&&x.variant==c.variant);if(ex)ex.qty=Math.max(ex.qty,c.qty);else cards.push(c)}save();render();toast(`Zaimportowano ${ok.length} kart`);$('set').close()}catch(err){toast('To nie jest plik kopii kolekcji')}};
+
+$('q').oninput=render;$('sort').onchange=render;
+render();snapshot();drawHist();rate().then(()=>{if(!cfg.usd2eur)rateUsd()});
+if(Date.now()-ld('lastUpd',0)>6*3600e3)refresh(true);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+</script>
+</body>
+</html>
