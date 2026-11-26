@@ -15,6 +15,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
 :root{color-scheme:light dark;--bg:light-dark(#f6f5f1,#121214);--card:light-dark(#fff,#1d1d21);--ink:light-dark(#141416,#f2f1ec);--mute:light-dark(#6b6a66,#a3a29c);--line:light-dark(#e2e0d8,#33333a);--red:#e3350d;--redk:light-dark(#b8280a,#ff6a45);--ok:light-dark(#11803f,#4fd88a);--foil:linear-gradient(115deg,#ff7a9a,#ffd36b 25%,#7affc4 50%,#6bc6ff 75%,#c98bff);--st:env(safe-area-inset-top);--sb:env(safe-area-inset-bottom)}
+[hidden]{display:none!important}
 *{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Archivo,-apple-system,system-ui,sans-serif;overflow-x:clip}
 main{max-width:1000px;margin:0 auto;padding:calc(var(--st) + 16px) max(16px,env(safe-area-inset-right)) calc(var(--sb) + 110px) max(16px,env(safe-area-inset-left))}
@@ -90,6 +91,22 @@ dialog.full .sh{padding-top:calc(var(--st) + 14px)}
 .prog{height:10px;border-radius:5px;background:var(--line);overflow:hidden}.prog i{display:block;height:100%;background:var(--foil);width:0}
 .c.miss .im img{filter:grayscale(1);opacity:.45}
 .c .ok{position:absolute;right:5px;top:5px;background:var(--ok);color:#fff;font-weight:800;font-size:13px;padding:1px 7px;border-radius:7px}
+.chartbox{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 14px 10px}
+.chead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.seg{display:flex;gap:4px}.seg button{min-height:34px;padding:0 10px;font-size:14px;border-width:1px;border-color:var(--line)}.seg button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.fig{position:relative;height:170px;margin-top:8px}.fig>svg{position:absolute;inset:0;width:100%;height:100%;touch-action:pan-y;overflow:visible}
+.small-fig{height:150px}
+.cardimg{display:block;width:min(72vw,300px);margin:0 auto;padding:0;border:0;background:none;min-height:0;border-radius:14px;overflow:hidden;box-shadow:0 12px 30px #0006}
+.cardimg img{width:100%;display:block;aspect-ratio:63/88;object-fit:cover;background:var(--line)}
+.links{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.links a{font-size:15px;min-height:44px;padding:0 10px;border-width:1px;border-color:var(--line)}
+.links a.main{background:var(--red);border-color:var(--red);color:#fff;grid-column:1/-1;font-size:16px}
+.sub{margin:6px 0 0;font-size:17px}
+.brow{display:grid;grid-template-columns:7.5em minmax(0,1fr) auto;gap:8px;align-items:center;font-size:14px;margin:5px 0}
+.brow i{display:block;height:12px;border-radius:6px;background:var(--foil)}.brow b{white-space:nowrap}
+#zoom{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;border:0;background:#000e;display:grid;place-items:center;padding:20px}
+#zoom[hidden]{display:none}
+#zoom img{max-width:100%;max-height:100%;border-radius:16px}
 #toast{inset:auto auto calc(var(--sb) + 96px) 50%;margin:0;border:0;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--sb) + 96px);background:#141416;color:#fff;padding:10px 16px;border-radius:12px;font-weight:600;z-index:30;display:none;max-width:90vw;text-align:center}
 </style>
 </head>
@@ -104,6 +121,11 @@ dialog.full .sh{padding-top:calc(var(--st) + 14px)}
     <div class="row"><span class="big" id="total">0 zł</span><span class="chg" id="chg"></span></div>
     <div class="small" id="upd">Ceny Cardmarket na żywo (Pokémon TCG API + TCGdex)</div>
   </div></section>
+  <section class="chartbox">
+    <div class="chead"><b>Wartość kolekcji w czasie</b><div class="seg" id="hRange"><button data-r="7">7 dni</button><button data-r="30" class="on">30 dni</button><button data-r="0">Wszystko</button></div></div>
+    <div class="fig"><svg id="hSvg" aria-label="Wykres wartości kolekcji"></svg></div>
+    <div class="small" id="hTip">Dotknij wykresu, żeby zobaczyć wartość z danego dnia.</div>
+  </section>
   <div class="bar">
     <input id="q" type="search" placeholder="Szukaj w kolekcji" aria-label="Szukaj w kolekcji">
     <select id="sort" aria-label="Sortuj"><option value="val">Najdroższe</option><option value="new">Najnowsze</option><option value="name">Nazwa</option><option value="set">Set</option></select>
@@ -137,12 +159,23 @@ dialog.full .sh{padding-top:calc(var(--st) + 14px)}
 </div></dialog>
 
 <dialog id="det"><div class="sh">
-  <div class="dh"><img id="dImg" alt=""><div><h2 id="dName"></h2><div class="small" id="dMeta"></div><div class="big" style="font-size:34px;margin-top:10px" id="dVal"></div><div class="small" id="dEach"></div></div></div>
+  <div class="top"><span></span><button id="dClose">Zamknij</button></div>
+  <button class="cardimg" id="dZoom" aria-label="Powiększ kartę"><img id="dImg" alt=""></button>
+  <div><h2 id="dName"></h2><div class="small" id="dMeta"></div></div>
+  <div class="row"><span class="big" style="font-size:36px" id="dVal"></span><span class="small" id="dEach"></span></div>
+  <div class="links" id="dLinks"></div>
+  <h3 class="sub">Ceny na Cardmarket</h3>
+  <div id="dBars"></div>
   <table id="dTab"></table>
+  <h3 class="sub">Historia ceny</h3>
+  <div class="fig small-fig"><svg id="dSvg" aria-label="Wykres ceny karty"></svg></div>
+  <div class="small" id="dTip"></div>
   <div class="two"><label>Wersja<select id="dVar"><option value="normal">Zwykła / Holo</option><option value="reverse">Reverse Holo</option></select></label><label>Ilość<input id="dQty" type="number" min="1" inputmode="numeric"></label></div>
-  <a class="btn" id="dLink" target="_blank" rel="noopener">Otwórz na Cardmarket ↗</a>
-  <div class="btns"><button class="pri" id="dSave" style="flex:1">Zapisz</button><button id="dDel">Usuń</button><button id="dClose">Zamknij</button></div>
+  <div class="btns" id="dOwnBtns"><button class="pri" id="dSave" style="flex:1">Zapisz</button><button id="dDel">Usuń z kolekcji</button></div>
+  <div class="btns" id="dAddBtns"><button class="pri" id="dAdd" style="flex:1">Dodaj do kolekcji</button></div>
+  <div class="note" id="dOwnNote"></div>
 </div></dialog>
+<div id="zoom" hidden><img id="zImg" alt=""></div>
 
 <dialog id="set"><div class="sh">
   <h2>Ustawienia</h2>
@@ -190,24 +223,24 @@ function price(p,variant){p=p||{};return variant=='reverse'?(p.reverseHoloTrend|
 const val=c=>price(c.prices,c.variant);
 const save=()=>sv('kolekcja',cards);
 
-async function get(url){
-  const h={};if(cfg.key)h['X-Api-Key']=cfg.key;
-  const r=await fetch(url,{headers:h});
+async function get(url,tries=2){
+  const h={};if(cfg.key&&url.includes('pokemontcg'))h['X-Api-Key']=cfg.key;
+  let r;for(let i=0;i<tries;i++){r=await fetch(url,{headers:h});if(r.status<500)break;await new Promise(z=>setTimeout(z,800))}
   if(r.status==429)throw new Error('Limit zapytań — spróbuj za chwilę lub dodaj klucz API w ustawieniach.');
   if(!r.ok)throw new Error('Błąd bazy kart ('+r.status+')');
   return r.json();
 }
 async function api(q,extra=''){
   const h={};if(cfg.key)h['X-Api-Key']=cfg.key;
-  const r=await fetch(`${API}?q=${encodeURIComponent(q)}&select=${FIELDS}&pageSize=60${extra}`,{headers:h});
+  let r;for(let i=0;i<2;i++){r=await fetch(`${API}?q=${encodeURIComponent(q)}&select=${FIELDS}&pageSize=60${extra}`,{headers:h});if(r.status<500)break;await new Promise(z=>setTimeout(z,800))}
   if(r.status==429)throw new Error('Limit zapytań — spróbuj za chwilę lub dodaj klucz API w ustawieniach.');
   if(!r.ok)throw new Error('Błąd bazy kart ('+r.status+')');
   return (await r.json()).data||[];
 }
-function fromApi(d){const um=Object.values(d.tcgplayer?.prices||{}).map(v=>v&&v.market).find(x=>x>0)||0;const pr={...(d.cardmarket?.prices||{})};for(const k in pr)if(!(+pr[k]>0))delete pr[k];if(um)pr.usdMarket=um;return{id:d.id,name:d.name,number:d.number,rarity:d.rarity||'',set:d.set?.name||'',setCode:d.set?.ptcgoCode||'',total:d.set?.printedTotal||'',release:d.set?.releaseDate||'',img:d.images?.small||'',imgL:d.images?.large||'',prices:pr,cmUrl:d.cardmarket?.url||'',cmUpd:d.cardmarket?.updatedAt||'',usd:Object.values(d.tcgplayer?.prices||{})[0]?.market||0}}
+function fromApi(d){const um=Object.values(d.tcgplayer?.prices||{}).map(v=>v&&v.market).find(x=>x>0)||0;const pr={...(d.cardmarket?.prices||{})};for(const k in pr)if(!(+pr[k]>0))delete pr[k];if(um)pr.usdMarket=um;return{id:d.id,name:d.name,number:d.number,rarity:d.rarity||'',set:d.set?.name||'',setCode:d.set?.ptcgoCode||'',total:d.set?.printedTotal||'',release:d.set?.releaseDate||'',img:d.images?.small||'',imgL:d.images?.large||'',prices:pr,tpUrl:d.tcgplayer?.url||'',cmUrl:d.cardmarket?.url||'',cmUpd:d.cardmarket?.updatedAt||'',usd:Object.values(d.tcgplayer?.prices||{})[0]?.market||0}}
 
 const TDX='https://api.tcgdex.net/v2/en';
-function tdxPrices(cm){cm=cm||{};const o={trendPrice:cm.trend,avg7:cm.avg7,avg30:cm.avg30,lowPrice:cm.low,averageSellPrice:cm.avg,reverseHoloTrend:cm['trend-holo'],reverseHoloAvg30:cm['avg30-holo']};for(const k in o)if(!(+o[k]>0))delete o[k];return o}
+function tdxPrices(cm){cm=cm||{};const o={trendPrice:cm.trend,avg1:cm.avg1,avg7:cm.avg7,avg30:cm.avg30,lowPrice:cm.low,averageSellPrice:cm.avg,reverseHoloTrend:cm['trend-holo'],reverseHoloAvg30:cm['avg30-holo']};for(const k in o)if(!(+o[k]>0))delete o[k];return o}
 function fromTdx(d,setInfo){const s=d.set||{},tp=d.pricing?.tcgplayer||{};const img=typeof d.image=='string'?d.image:'';
   return{id:'tdx:'+d.id,tid:d.id,src:'tdx',name:d.name||'',number:d.localId||'',rarity:d.rarity||'',set:s.name||setInfo?.name||'',total:s.cardCount?.official||setInfo?.total||'',release:setInfo?.rel||'',
     img:img?img+'/low.png':'',imgL:img?img+'/high.png':'',prices:Object.assign(tdxPrices(d.pricing?.cardmarket),((tp.normal||tp.holo||tp.reverse||{}).marketPrice>0)?{usdMarket:(tp.normal||tp.holo||tp.reverse).marketPrice}:{}),cmUrl:'',cmUpd:(d.pricing?.cardmarket?.updated||'').slice(0,10),usd:(tp.normal||tp.holo||tp.reverse||{}).marketPrice||0}}
@@ -346,7 +379,7 @@ async function search(code){
     if(num&&name)tries.push(`number:${num} name:"${name}*"`);
     if(name)tries.push(`name:"${name}*"`);
     if(num&&!name&&!tot)tries.push(`number:${num}`);
-    for(const t of tries){res=await api(t,'&orderBy=-set.releaseDate');if(res.length)break}
+    try{for(const t of tries){res=await api(t,'&orderBy=-set.releaseDate');if(res.length)break}}catch(e){res=[]}
     cands=res.map(fromApi);
     if(!cands.length&&name){
       $('pNote').textContent='Szukam w drugiej bazie…';
@@ -375,7 +408,7 @@ $('pAdd').onclick=()=>{
   const ex=cards.find(c=>c.id==selC.id&&c.variant==variant);
   if(ex){ex.qty+=qty;Object.assign(ex,{prices:selC.prices,cmUpd:selC.cmUpd});toast(`Masz już tę kartę — teraz ×${ex.qty}`)}
   else{const n={...selC,variant,qty,added:Date.now()};delete n.loading;cards.push(n);toast(`Dodano: ${selC.name} (${pln(price(selC.prices,variant))})`)}
-  sv('prevTotal',null);save();render();$('pick').close();if($('sets').open&&curSet)renderSet();
+  sv('prevTotal',null);save();render();snapshot();$('pick').close();if($('sets').open&&curSet)renderSet();
 };
 
 /* ---------- sety ---------- */
@@ -389,7 +422,7 @@ async function openSets(){
     $('xNote').textContent='Wczytuję listę setów…';
     try{const j=await get('https://api.pokemontcg.io/v2/sets?orderBy=-releaseDate&pageSize=250&select=id,name,series,printedTotal,total,releaseDate,images');
       allSets={t:Date.now(),d:j.data.map(s=>({id:s.id,name:s.name,series:s.series,pt:s.printedTotal,total:s.total,rel:s.releaseDate,logo:s.images?.logo||'',sym:s.images?.symbol||''}))};sv('setsCache',allSets)}
-    catch(e){if(!allSets){$('xNote').innerHTML='<span class="err">'+esc(e.message.includes('fetch')?'Brak połączenia z bazą kart.':e.message)+'</span>';return}}
+    catch(e){if(!allSets){try{const j=await get(TDX+'/sets');allSets={t:0,d:j.reverse().map(s=>({id:'tdx:'+s.id,name:s.name,series:'',pt:s.cardCount?.official||'',total:s.cardCount?.total||'',rel:'',logo:s.logo?s.logo+'.png':'',sym:''}))};renderSets();return}catch(e2){}}if(!allSets){$('xNote').innerHTML='<span class="err">'+esc(e.message.includes('fetch')?'Brak połączenia z bazą kart.':e.message)+'</span>';return}}
   }
   renderSets();
 }
@@ -408,8 +441,9 @@ async function openSet(id){
   $('xMeta').textContent=`${curSet.series} · premiera ${(curSet.rel||'').replace(/\//g,'.')}`;$('xGrid').innerHTML='<div class="empty" style="grid-column:1/-1">Wczytuję karty…</div>';$('xProg').textContent='';$('xBar').style.width=0;
   $('sets').querySelector('.sh').scrollTop=0;$('sets').scrollTop=0;
   try{
+    if(id.startsWith('tdx:')){await openTdxSet(id);return}
     setCards=[];let page=1;
-    while(true){const j=await get(`${API}?q=${encodeURIComponent('set.id:'+id)}&select=${FIELDS}&pageSize=250&page=${page}`);setCards.push(...j.data.map(fromApi));if(setCards.length>=j.totalCount||!j.data.length)break;page++}
+    try{while(true){const j=await get(`${API}?q=${encodeURIComponent('set.id:'+id)}&select=${FIELDS}&pageSize=250&page=${page}`);setCards.push(...j.data.map(fromApi));if(setCards.length>=j.totalCount||!j.data.length)break;page++}}catch(e){setCards=[]}
     if(curSet.id!=id)return;
     if(!setCards.length){await openTdxSet(id);return}
     renderSet();
@@ -424,7 +458,7 @@ async function openSet(id){
   }catch(e){$('xGrid').innerHTML='<div class="empty err" style="grid-column:1/-1">'+esc(e.message.includes('fetch')?'Brak połączenia z bazą kart.':e.message)+'</div>'}
 }
 async function openTdxSet(id){
-  $('xGrid').innerHTML='<div class="empty" style="grid-column:1/-1">Ten set jest nowy — pobieram karty z drugiej bazy (TCGdex)…</div>';
+  $('xGrid').innerHTML='<div class="empty" style="grid-column:1/-1">Pobieram karty z drugiej bazy (TCGdex)…</div>';
   const ts=await tdxFindSet(curSet.name);
   if(!ts){$('xGrid').innerHTML='<div class="empty" style="grid-column:1/-1">Karty z tego setu nie są jeszcze dostępne w żadnej bazie. Spróbuj za kilka dni.</div>';return}
   const d=await get(TDX+'/sets/'+encodeURIComponent(ts.id));if(curSet?.id!=id)return;
@@ -447,10 +481,7 @@ function renderSet(){
   list.sort(s=='val'?(a,b)=>price(b.prices)-price(a.prices):byNum);
   $('xGrid').innerHTML=list.length?list.map(c=>{const o=owned(c.id);return`<button class="c${o?'':' miss'}" data-id="${esc(c.id)}"><div class="im">${c.img.startsWith('https://')?`<img loading="lazy" src="${esc(c.img)}" alt="">`:''}${o?`<span class="ok">✓${o>1?' ×'+o:''}</span>`:''}<span class="v">${price(c.prices)?esc(pln(price(c.prices))):(c.loading?'…':'—')}</span></div><h3>${esc(c.name)}</h3><p>${esc(c.number)}/${esc(c.total)}${c.rarity?' · '+esc(c.rarity):''}</p></button>`}).join(''):`<div class="empty" style="grid-column:1/-1">${f=='miss'?'Masz komplet! 🎉':'Brak kart do pokazania.'}</div>`;
 }
-$('xGrid').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const c=setCards.find(x=>x.id==b.dataset.id);if(!c)return;
-  openPick({},' ');$('pTitle').textContent='Dodać do kolekcji?';$('pq').value=c.name;$('pn').value=c.number+'/'+c.total;
-  cands=[c];$('pList').innerHTML=`<button class="cand" data-i="0">${c.img.startsWith('https://')?`<img src="${esc(c.img)}" alt="">`:'<span></span>'}<span><b>${esc(c.name)}</b><span class="small">${esc(c.set)} · ${esc(c.number)}/${esc(c.total)}${c.rarity?' · '+esc(c.rarity):''}</span></span><span class="pr">${price(c.prices)?esc(pln(price(c.prices))):'—'}</span></button>`;
-  const o=owned(c.id);$('pNote').textContent=o?`Masz już ${o} szt. tej karty.`:'';choose(0)};
+$('xGrid').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const c=setCards.find(x=>x.id==b.dataset.id);if(!c)return;const mine=cards.find(x=>x.id==c.id);openCard(mine?Object.assign(mine,{prices:c.prices}):c,mine||null)};
 $('xList').onclick=e=>{const b=e.target.closest('.srow');if(b)openSet(b.dataset.id)};
 $('xq').oninput=()=>allSets&&renderSets();$('xf').onchange=$('xs').onchange=renderSet;
 $('xBack').onclick=()=>{curSet=null;$('vSet').hidden=true;$('vList').hidden=false;renderSets()};
@@ -458,21 +489,104 @@ $('xClose').onclick=$('xClose2').onclick=()=>{curSet=null;$('sets').close()};
 $('setsBtn').onclick=openSets;
 $('manual').onclick=()=>openPick({});
 
-/* ---------- szczegóły ---------- */
-$('grid').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const [id,v]=b.dataset.id.split('|');cur=cards.find(c=>c.id==id&&c.variant==v);if(!cur)return;
-  $('dImg').src=(cur.imgL||cur.img).startsWith('https://')?(cur.imgL||cur.img):'';$('dName').textContent=cur.name;
-  $('dMeta').textContent=`${cur.set} · ${cur.number}/${cur.total}${cur.rarity?' · '+cur.rarity:''}`;
-  $('dVal').textContent=pln(val(cur)*cur.qty);$('dEach').textContent=cur.qty>1?`${pln(val(cur))} za sztukę`:'';
-  const p=cur.prices||{},rows=[['Trend',p.trendPrice],['Średnia 7 dni',p.avg7],['Średnia 30 dni',p.avg30],['Najniższa oferta',p.lowPrice],['Reverse Holo — trend',p.reverseHoloTrend]].filter(r=>r[1]);
-  if(!hasCM(p)&&p.usdMarket)rows.push(['Szacunek z TCGplayer (brak ceny Cardmarket)',p.usdMarket*(cfg.usd2eur||0.92)]);
-  $('dTab').innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${esc(pln(r[1]))} <span class="small">(${(+r[1]).toFixed(2)} €)</span></td></tr>`).join('')+(cur.usd?`<tr><td>TCGplayer (USA)</td><td>$${(+cur.usd).toFixed(2)}</td></tr>`:'')+(cur.cmUpd?`<tr><td class="small">Dane z dnia</td><td class="small">${esc(cur.cmUpd)}</td></tr>`:'')||'<tr><td>Brak cen dla tej karty w bazie.</td><td></td></tr>';
-  $('dVar').value=cur.variant;$('dQty').value=cur.qty;
-  const link=cur.cmUrl&&cur.cmUrl.startsWith('https://')?cur.cmUrl:'https://www.cardmarket.com/pl/Pokemon/Products/Search?searchString='+encodeURIComponent(cur.name);
-  $('dLink').href=link;$('dDel').textContent='Usuń';$('det').showModal()};
+/* ---------- historia ---------- */
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+let hist=ld('hist',[]),chist=ld('chist',{});
+function pushPt(arr,d,v){if(!(v>0))return arr;if(arr.length&&arr[arr.length-1][0]==d)arr[arr.length-1][1]=v;else arr.push([d,v]);if(arr.length>730)arr.splice(0,arr.length-730);return arr}
+function cardKey(c,variant){return c.id+'|'+(variant||c.variant||'normal')}
+function recCard(c,variant){const k=cardKey(c,variant);chist[k]=pushPt(chist[k]||[],today(),+price(c.prices,variant||c.variant).toFixed(2))}
+function snapshot(){
+  if(!cards.length)return;const d=today();
+  const tot=cards.reduce((t,c)=>t+val(c)*c.qty,0);
+  const last=hist.length&&hist[hist.length-1];
+  if(last&&last.d==d)last.v=+tot.toFixed(2);else if(tot>0)hist.push({d,v:+tot.toFixed(2)});
+  cards.forEach(c=>recCard(c));
+  sv('hist',hist);sv('chist',chist);drawHist();
+}
+function lineChart(svg,pts,tipEl,emptyMsg){
+  svg._pts=pts;svg._tip=tipEl;svg._empty=emptyMsg;
+  if(!svg._ro){svg._ro=new ResizeObserver(()=>drawChart(svg));svg._ro.observe(svg);
+    const move=e=>{const p=svg._pts;if(!p||p.length<2)return;const r=svg.getBoundingClientRect();const x=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
+      let best=0,bd=1e9;p.forEach((q,i)=>{const dx=Math.abs(svg._xs[i]-x);if(dx<bd){bd=dx;best=i}});
+      const g=svg.querySelector('.hov');if(g){g.setAttribute('transform',`translate(${svg._xs[best]},0)`);g.style.display='';g.querySelector('circle').setAttribute('cy',svg._ys[best])}
+      if(svg._tip)svg._tip.textContent=`${new Date(p[best].t).toLocaleDateString('pl-PL',{day:'numeric',month:'long',year:'numeric'})}: ${pln(p[best].v)}`};
+    svg.addEventListener('pointermove',move);svg.addEventListener('pointerdown',move);}
+  drawChart(svg);
+}
+function drawChart(svg){
+  const pts=svg._pts||[],W=svg.clientWidth,H=svg.clientHeight;if(!W||!H)return;
+  if(pts.length<2){svg.innerHTML=`<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="currentColor" opacity=".6" font-size="14">${esc(svg._empty||'Za mało danych')}</text>`;return}
+  const L=8,R=8,T=18,B=22,t0=pts[0].t,t1=pts[pts.length-1].t||t0+1;let lo=Math.min(...pts.map(p=>p.v)),hi=Math.max(...pts.map(p=>p.v));
+  if(hi-lo<0.01){hi+=1;lo=Math.max(0,lo-1)}const pad=(hi-lo)*.12;lo=Math.max(0,lo-pad);hi+=pad;
+  const X=t=>L+(W-L-R)*((t-t0)/((t1-t0)||1)),Y=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo));
+  svg._xs=pts.map(p=>X(p.t));svg._ys=pts.map(p=>Y(p.v));
+  const line=pts.map((p,i)=>(i?'L':'M')+svg._xs[i].toFixed(1)+' '+svg._ys[i].toFixed(1)).join('');
+  const up=pts[pts.length-1].v>=pts[0].v,col=up?'#16a34a':'#e3350d',id='g'+Math.random().toString(36).slice(2,7);
+  const fd=t=>new Date(t).toLocaleDateString('pl-PL',{day:'numeric',month:'short'});
+  const lx=svg._xs[pts.length-1],ly=svg._ys[pts.length-1];
+  svg.innerHTML=`<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".35"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+  <line x1="${L}" x2="${W-R}" y1="${Y(hi-pad)}" y2="${Y(hi-pad)}" stroke="currentColor" stroke-opacity=".12" stroke-dasharray="3 4"/>
+  <line x1="${L}" x2="${W-R}" y1="${Y(lo+pad)}" y2="${Y(lo+pad)}" stroke="currentColor" stroke-opacity=".12" stroke-dasharray="3 4"/>
+  <text x="${W-R}" y="${Y(hi-pad)-5}" text-anchor="end" font-size="12" fill="currentColor" opacity=".6">${esc(pln(hi-pad))}</text>
+  <text x="${W-R}" y="${Y(lo+pad)+14}" text-anchor="end" font-size="12" fill="currentColor" opacity=".6">${esc(pln(lo+pad))}</text>
+  <path d="${line}L${lx.toFixed(1)} ${H-B}L${L} ${H-B}Z" fill="url(#${id})"/>
+  <path d="${line}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="${lx}" cy="${ly}" r="4.5" fill="${col}"/>
+  <text x="${L}" y="${H-5}" font-size="12" fill="currentColor" opacity=".6">${fd(t0)}</text>
+  <text x="${W-R}" y="${H-5}" font-size="12" text-anchor="end" fill="currentColor" opacity=".6">${fd(t1)}</text>
+  <g class="hov" style="display:none"><line y1="${T-6}" y2="${H-B}" stroke="currentColor" stroke-opacity=".4"/><circle r="5" fill="${col}" stroke="var(--card)" stroke-width="2"/></g>`;
+}
+let hRange=30;
+function drawHist(){
+  const cut=hRange?Date.now()-hRange*86400e3:0;
+  const pts=hist.map(x=>({t:new Date(x.d+'T12:00').getTime(),v:x.v})).filter(p=>p.t>=cut);
+  lineChart($('hSvg'),pts,$('hTip'),cards.length?'Wykres zbiera dane od dziś — wróć jutro':'Dodaj karty, żeby śledzić wartość');
+}
+$('hRange').onclick=e=>{const b=e.target.closest('button');if(!b)return;hRange=+b.dataset.r;document.querySelectorAll('#hRange button').forEach(x=>x.classList.toggle('on',x===b));drawHist()};
+
+/* ---------- podgląd karty ---------- */
+let viewC=null;
+function shopLinks(c){
+  const q=c.name+' '+String(c.number).replace(/^0+(?=\d)/,'')+(c.total?'/'+c.total:'');
+  const qn=encodeURIComponent(q),qs=encodeURIComponent(c.name+' '+c.set);
+  const cm=c.cmUrl&&c.cmUrl.startsWith('https://')?c.cmUrl:'https://www.cardmarket.com/pl/Pokemon/Products/Search?searchString='+encodeURIComponent(c.name);
+  const tp=c.tpUrl&&c.tpUrl.startsWith('https://')?c.tpUrl:'https://www.tcgplayer.com/search/pokemon/product?q='+qs;
+  return [['Kup / sprzedaj na Cardmarket ↗',cm,'main'],['Allegro ↗','https://allegro.pl/listing?string='+qn],['OLX ↗','https://www.olx.pl/oferty/q-'+encodeURIComponent(q.replace(/\//g,' ').replace(/\s+/g,'-'))+'/'],['eBay ↗','https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent('pokemon '+q)],['TCGplayer ↗',tp]];
+}
+function openCard(c,mine){
+  viewC=c;cur=mine||null;const variant=mine?mine.variant:(/reverse/i.test(c.rarity)?'reverse':'normal');
+  const im=(c.imgL||c.img||'');$('dImg').src=im.startsWith('https://')?im:'';$('zImg').src=$('dImg').src;
+  $('dName').textContent=c.name;$('dMeta').textContent=`${c.set} · ${c.number}/${c.total}${c.rarity?' · '+c.rarity:''}`;
+  const pv=price(c.prices,variant);
+  $('dVal').textContent=pv?pln(mine?pv*mine.qty:pv):'brak ceny';$('dEach').textContent=mine&&mine.qty>1?`${pln(pv)} za szt. · masz ×${mine.qty}`:(mine?'w Twojej kolekcji':'');
+  $('dLinks').innerHTML=shopLinks(c).map(l=>`<a class="btn ${l[2]||''}" href="${esc(l[1])}" target="_blank" rel="noopener">${esc(l[0])}</a>`).join('');
+  const p=c.prices||{};
+  const bars=[['Średnia 30 dni',p.avg30],['Średnia 7 dni',p.avg7],['Wczoraj',p.avg1],['Trend',p.trendPrice]].filter(r=>r[1]>0),mx=Math.max(...bars.map(b=>b[1]),0);
+  $('dBars').innerHTML=bars.length?bars.map(b=>`<div class="brow"><span>${b[0]}</span><i style="width:${Math.max(4,b[1]/mx*100).toFixed(0)}%"></i><b>${esc(pln(b[1]))}</b></div>`).join('')+(bars.length>1&&p.avg30&&p.trendPrice?`<div class="small">${p.trendPrice>=p.avg30?'▲':'▼'} ${Math.abs((p.trendPrice/p.avg30-1)*100).toFixed(0)}% względem średniej z 30 dni</div>`:''):'';
+  const rows=[['Najniższa oferta',p.lowPrice],['Reverse Holo — trend',p.reverseHoloTrend]].filter(r=>r[1]>0);
+  if(!hasCM(p)&&p.usdMarket)rows.push(['Szacunek z TCGplayer',p.usdMarket*(cfg.usd2eur||0.92)]);
+  $('dTab').innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${esc(pln(r[1]))} <span class="small">(${(+r[1]).toFixed(2)} €)</span></td></tr>`).join('')+(c.cmUpd?`<tr><td class="small">Dane z dnia</td><td class="small">${esc(c.cmUpd)}</td></tr>`:'')+(!bars.length&&!rows.length?'<tr><td>Brak cen dla tej karty w bazach.</td><td></td></tr>':'');
+  recCard(c,variant);sv('chist',chist);
+  const hp=(chist[cardKey(c,variant)]||[]).map(x=>({t:new Date(x[0]+'T12:00').getTime(),v:x[1]}));
+  $('dTip').textContent=hp.length>1?'Dotknij wykresu, żeby zobaczyć cenę z danego dnia.':'Aplikacja zapisuje cenę tej karty codziennie przy odświeżaniu — wykres będzie rósł z czasem.';
+  $('dVar').value=variant;$('dQty').value=mine?mine.qty:1;
+  $('dOwnBtns').hidden=!mine;$('dAddBtns').hidden=!!mine;$('dDel').textContent='Usuń z kolekcji';
+  const o=owned(c.id);$('dOwnNote').textContent=!mine&&o?`Masz już ${o} szt. tej karty — dodanie zwiększy ilość.`:'';
+  $('det').showModal();$('det').scrollTop=0;
+  lineChart($('dSvg'),hp,$('dTip'),'Historia zbiera się od dziś');
+}
+$('grid').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const [id,v]=b.dataset.id.split('|');const c=cards.find(x=>x.id==id&&x.variant==v);if(c)openCard(c,c)};
+$('dZoom').onclick=()=>{if($('zImg').src){$('zoom').hidden=false;try{$('zoom').setAttribute('popover','manual');$('zoom').showPopover()}catch(e){}}};
+$('zoom').onclick=()=>{$('zoom').hidden=true;try{$('zoom').hidePopover()}catch(e){}};
 $('dClose').onclick=()=>$('det').close();
-$('dSave').onclick=()=>{const v=$('dVar').value,q=Math.max(1,parseInt($('dQty').value)||1);const other=cards.find(c=>c!==cur&&c.id==cur.id&&c.variant==v);
-  if(other){other.qty+=q;cards=cards.filter(c=>c!==cur)}else{cur.variant=v;cur.qty=q}sv('prevTotal',null);save();render();$('det').close()};
-$('dDel').onclick=()=>{if($('dDel').textContent=='Usuń'){$('dDel').textContent='Na pewno?';return}cards=cards.filter(c=>c!==cur);sv('prevTotal',null);save();render();$('det').close();toast('Usunięto kartę')};
+$('dVar').onchange=()=>{if(viewC){const pv=price(viewC.prices,$('dVar').value);$('dVal').textContent=pv?pln(pv*(cur?cur.qty:1)):'brak ceny'}};
+$('dSave').onclick=()=>{if(!cur)return;const v=$('dVar').value,q=Math.max(1,parseInt($('dQty').value)||1);const other=cards.find(c=>c!==cur&&c.id==cur.id&&c.variant==v);
+  if(other){other.qty+=q;cards=cards.filter(c=>c!==cur)}else{cur.variant=v;cur.qty=q}sv('prevTotal',null);save();render();snapshot();$('det').close();if($('sets').open&&curSet)renderSet()};
+$('dDel').onclick=()=>{if(!cur)return;if($('dDel').textContent!='Na pewno?'){$('dDel').textContent='Na pewno?';return}cards=cards.filter(c=>c!==cur);sv('prevTotal',null);save();render();snapshot();$('det').close();toast('Usunięto kartę');if($('sets').open&&curSet)renderSet()};
+$('dAdd').onclick=()=>{const c=viewC;if(!c)return;const variant=$('dVar').value,qty=Math.max(1,parseInt($('dQty').value)||1);
+  const ex=cards.find(x=>x.id==c.id&&x.variant==variant);
+  if(ex){ex.qty+=qty;ex.prices=c.prices;toast(`Masz już tę kartę — teraz ×${ex.qty}`)}else{const n={...c,variant,qty,added:Date.now()};delete n.loading;cards.push(n);toast(`Dodano: ${c.name}`)}
+  sv('prevTotal',null);save();render();snapshot();$('det').close();if($('sets').open&&curSet)renderSet()};
 
 /* ---------- odświeżanie cen ---------- */
 async function refresh(silent){
@@ -487,7 +601,7 @@ async function refresh(silent){
     await enrich(cards).catch(()=>{});
     const tids=[...new Set(cards.filter(c=>c.src=='tdx').map(c=>c.tid))];
     await pool(tids,6,async tid=>{const f=fromTdx(await tdxCard(tid));cards.filter(c=>c.id==f.id).forEach(c=>Object.assign(c,{prices:f.prices,cmUpd:f.cmUpd,usd:f.usd,rarity:f.rarity||c.rarity}))});
-    sv('prevTotal',before);sv('lastUpd',Date.now());save();render();if(!silent)toast('Ceny zaktualizowane');
+    sv('prevTotal',before);sv('lastUpd',Date.now());save();render();snapshot();if(!silent)toast('Ceny zaktualizowane');
   }catch(e){if(!silent)toast(e.message.includes('fetch')?'Brak internetu':e.message)}
   $('refresh').disabled=false;
 }
@@ -511,7 +625,7 @@ $('sImp').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)r
   for(const c of ok){const ex=cards.find(x=>x.id==c.id&&x.variant==c.variant);if(ex)ex.qty=Math.max(ex.qty,c.qty);else cards.push(c)}save();render();toast(`Zaimportowano ${ok.length} kart`);$('set').close()}catch(err){toast('To nie jest plik kopii kolekcji')}};
 
 $('q').oninput=render;$('sort').onchange=render;
-render();rate().then(()=>{if(!cfg.usd2eur)rateUsd()});
+render();snapshot();drawHist();rate().then(()=>{if(!cfg.usd2eur)rateUsd()});
 if(Date.now()-ld('lastUpd',0)>6*3600e3)refresh(true);
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
