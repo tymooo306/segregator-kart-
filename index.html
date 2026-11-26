@@ -102,7 +102,7 @@ dialog.full .sh{padding-top:calc(var(--st) + 14px)}
   <section class="hero"><div class="heroin">
     <div class="small">Wartość kolekcji (Cardmarket, trend)</div>
     <div class="row"><span class="big" id="total">0 zł</span><span class="chg" id="chg"></span></div>
-    <div class="small" id="upd">Ceny pobierane na żywo z bazy Pokémon TCG</div>
+    <div class="small" id="upd">Ceny Cardmarket na żywo (Pokémon TCG API + TCGdex)</div>
   </div></section>
   <div class="bar">
     <input id="q" type="search" placeholder="Szukaj w kolekcji" aria-label="Szukaj w kolekcji">
@@ -186,7 +186,7 @@ function toast(t){const e=$('toast');e.textContent=t;e.style.display='block';
   try{if(e.showPopover){e.setAttribute('popover','manual');if(e.matches(':popover-open'))e.hidePopover();e.showPopover()}}catch(x){}
   clearTimeout(toast.t);toast.t=setTimeout(()=>{e.style.display='none';try{e.hidePopover&&e.matches(':popover-open')&&e.hidePopover()}catch(x){}},2800)}
 const pln=e=>(e*cfg.rate).toLocaleString('pl-PL',{minimumFractionDigits:e*cfg.rate<100?2:0,maximumFractionDigits:e*cfg.rate<100?2:0})+' zł';
-function price(p,variant){p=p||{};return variant=='reverse'?(p.reverseHoloTrend||p.reverseHoloAvg30||p.reverseHoloSell||p.trendPrice||0):(p.trendPrice||p.avg30||p.averageSellPrice||p.lowPrice||0)}
+function price(p,variant){p=p||{};return variant=='reverse'?(p.reverseHoloTrend||p.reverseHoloAvg30||p.reverseHoloSell||p.trendPrice||0):(p.trendPrice||p.avg30||p.averageSellPrice||p.lowPrice||p.reverseHoloTrend||p.reverseHoloAvg30||(p.usdMarket||0)*(cfg.usd2eur||0.92)||0)}
 const val=c=>price(c.prices,c.variant);
 const save=()=>sv('kolekcja',cards);
 
@@ -204,8 +204,43 @@ async function api(q,extra=''){
   if(!r.ok)throw new Error('Błąd bazy kart ('+r.status+')');
   return (await r.json()).data||[];
 }
-function fromApi(d){return{id:d.id,name:d.name,number:d.number,rarity:d.rarity||'',set:d.set?.name||'',setCode:d.set?.ptcgoCode||'',total:d.set?.printedTotal||'',release:d.set?.releaseDate||'',img:d.images?.small||'',imgL:d.images?.large||'',prices:d.cardmarket?.prices||{},cmUrl:d.cardmarket?.url||'',cmUpd:d.cardmarket?.updatedAt||'',usd:Object.values(d.tcgplayer?.prices||{})[0]?.market||0}}
+function fromApi(d){const um=Object.values(d.tcgplayer?.prices||{}).map(v=>v&&v.market).find(x=>x>0)||0;const pr={...(d.cardmarket?.prices||{})};for(const k in pr)if(!(+pr[k]>0))delete pr[k];if(um)pr.usdMarket=um;return{id:d.id,name:d.name,number:d.number,rarity:d.rarity||'',set:d.set?.name||'',setCode:d.set?.ptcgoCode||'',total:d.set?.printedTotal||'',release:d.set?.releaseDate||'',img:d.images?.small||'',imgL:d.images?.large||'',prices:pr,cmUrl:d.cardmarket?.url||'',cmUpd:d.cardmarket?.updatedAt||'',usd:Object.values(d.tcgplayer?.prices||{})[0]?.market||0}}
 
+const TDX='https://api.tcgdex.net/v2/en';
+function tdxPrices(cm){cm=cm||{};const o={trendPrice:cm.trend,avg7:cm.avg7,avg30:cm.avg30,lowPrice:cm.low,averageSellPrice:cm.avg,reverseHoloTrend:cm['trend-holo'],reverseHoloAvg30:cm['avg30-holo']};for(const k in o)if(!(+o[k]>0))delete o[k];return o}
+function fromTdx(d,setInfo){const s=d.set||{},tp=d.pricing?.tcgplayer||{};const img=typeof d.image=='string'?d.image:'';
+  return{id:'tdx:'+d.id,tid:d.id,src:'tdx',name:d.name||'',number:d.localId||'',rarity:d.rarity||'',set:s.name||setInfo?.name||'',total:s.cardCount?.official||setInfo?.total||'',release:setInfo?.rel||'',
+    img:img?img+'/low.png':'',imgL:img?img+'/high.png':'',prices:Object.assign(tdxPrices(d.pricing?.cardmarket),((tp.normal||tp.holo||tp.reverse||{}).marketPrice>0)?{usdMarket:(tp.normal||tp.holo||tp.reverse).marketPrice}:{}),cmUrl:'',cmUpd:(d.pricing?.cardmarket?.updated||'').slice(0,10),usd:(tp.normal||tp.holo||tp.reverse||{}).marketPrice||0}}
+async function pool(items,n,fn){let i=0;await Promise.all(Array.from({length:Math.min(n,items.length)},async()=>{while(i<items.length){const k=i++;try{await fn(items[k],k)}catch(e){}}}))}
+const tdxCard=id=>get(TDX+'/cards/'+encodeURIComponent(id));
+let tdxSets=ld('tdxSets',null);
+async function tdxFindSet(name){
+  if(!tdxSets||Date.now()-tdxSets.t>86400e3){const j=await get(TDX+'/sets');tdxSets={t:Date.now(),d:j.map(s=>({id:s.id,name:s.name}))};sv('tdxSets',tdxSets)}
+  const n=x=>String(x).toLowerCase().replace(/[^a-z0-9]/g,'');const t=n(name);
+  return tdxSets.d.find(s=>n(s.name)==t)||tdxSets.d.find(s=>n(s.name).includes(t)||t.includes(n(s.name)));
+}
+const tdxSetCache={};
+async function tdxSetCards(setName){
+  if(tdxSetCache[setName])return tdxSetCache[setName];
+  const ts=await tdxFindSet(setName);if(!ts)return tdxSetCache[setName]=[];
+  const d=await get(TDX+'/sets/'+encodeURIComponent(ts.id));return tdxSetCache[setName]=d.cards||[];
+}
+const hasCM=p=>p&&(p.trendPrice||p.avg30||p.averageSellPrice||p.lowPrice||p.reverseHoloTrend);
+async function enrich(list,onStep){
+  const need=list.filter(c=>c.src!='tdx'&&!hasCM(c.prices));if(!need.length)return 0;let got=0;
+  const bySet={};need.forEach(c=>(bySet[c.set]=bySet[c.set]||[]).push(c));
+  for(const s in bySet){
+    let tc=[];try{tc=await tdxSetCards(s)}catch(e){continue}
+    if(!tc.length)continue;
+    await pool(bySet[s],6,async c=>{
+      const n=String(c.number).toUpperCase();const m=tc.find(x=>String(x.localId).toUpperCase()==n)||tc.find(x=>/^\d+$/.test(n)&&parseInt(x.localId,10)==parseInt(n,10)&&/^\d+$/.test(x.localId));
+      if(!m)return;const d=await tdxCard(m.id);const pr=tdxPrices(d.pricing?.cardmarket);
+      if(hasCM(pr)){c.prices=Object.assign({},c.prices,pr);c.cmUpd=(d.pricing.cardmarket.updated||'').slice(0,10);c.pSrc='TCGdex';got++;onStep&&onStep()}
+      else{const tp=d.pricing?.tcgplayer||{};const um=(tp.normal||tp.holo||tp.reverse||{}).marketPrice;if(um>0&&!c.prices?.usdMarket){c.prices=Object.assign({},c.prices,{usdMarket:um});onStep&&onStep()}}
+    });
+  }
+  return got;
+}
 function render(){
   const q=$('q').value.trim().toLowerCase(),s=$('sort').value;
   const by={val:(a,b)=>val(b)-val(a),new:(a,b)=>b.added-a.added,name:(a,b)=>a.name.localeCompare(b.name,'pl'),set:(a,b)=>(b.release||'').localeCompare(a.release||'')||(parseInt(a.number)||0)-(parseInt(b.number)||0)};
@@ -214,7 +249,7 @@ function render(){
   $('total').textContent=pln(tot);
   const prev=ld('prevTotal',null);
   if(prev!=null&&cards.length){const d=tot-prev;$('chg').textContent=Math.abs(d)<0.005?'':(d>0?'▲ +':'▼ ')+pln(d).replace('-','−');$('chg').style.color=d>0?'var(--ok)':'var(--redk)'}else $('chg').textContent='';
-  const lu=ld('lastUpd',0);$('upd').textContent=lu?'Ceny odświeżone '+new Date(lu).toLocaleString('pl-PL',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+` · 1 € = ${cfg.rate.toFixed(4)} zł`:'Ceny pobierane na żywo z bazy Pokémon TCG';
+  const lu=ld('lastUpd',0);$('upd').textContent=lu?'Ceny odświeżone '+new Date(lu).toLocaleString('pl-PL',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+` · 1 € = ${cfg.rate.toFixed(4)} zł`:'Ceny Cardmarket na żywo (Pokémon TCG API + TCGdex)';
   $('cnt').textContent=n?`${n} ${n==1?'karta':(n%10>=2&&n%10<=4&&(n%100<10||n%100>=20))?'karty':'kart'}${cards.length>1?` · ${cards.length} różnych`:''}`:'Kolekcja jest pusta';
   $('grid').innerHTML=list.length?list.map(c=>`<button class="c" data-id="${esc(c.id+'|'+c.variant)}"><div class="im">${c.img.startsWith('https://')?`<img loading="lazy" src="${esc(c.img)}" alt="">`:''}${c.qty>1?`<span class="q">×${c.qty}</span>`:''}${c.variant=='reverse'?'<span class="rh">REV</span>':''}<span class="v">${val(c)?esc(pln(val(c))):'brak ceny'}</span></div><h3>${esc(c.name)}</h3><p>${esc(c.set)} · ${esc(c.number)}/${esc(c.total)}</p></button>`).join(''):`<div class="empty" style="grid-column:1/-1">${cards.length?'Nic nie pasuje.':'Naciśnij „Skanuj kartę” i zrób zdjęcie pierwszej karty.'}</div>`;
 }
@@ -312,7 +347,17 @@ async function search(code){
     if(name)tries.push(`name:"${name}*"`);
     if(num&&!name&&!tot)tries.push(`number:${num}`);
     for(const t of tries){res=await api(t,'&orderBy=-set.releaseDate');if(res.length)break}
-    cands=res.map(fromApi).sort((a,b)=>sim(b.name,name)-sim(a.name,name));
+    cands=res.map(fromApi);
+    if(!cands.length&&name){
+      $('pNote').textContent='Szukam w drugiej bazie…';
+      let brief=await get(TDX+'/cards?name='+encodeURIComponent(name));
+      if(num){const f=brief.filter(b=>parseInt(b.localId,10)==parseInt(num,10)||String(b.localId).toUpperCase()==num);if(f.length)brief=f}
+      brief=brief.slice(-15);const out=[];
+      await pool(brief,6,async b=>{const c=fromTdx(await tdxCard(b.id));if(!tot||String(c.total)==tot||brief.length<4)out.push(c)});
+      cands=out.length?out:[];
+    }
+    cands.sort((a,b)=>sim(b.name,name)-sim(a.name,name));
+    if(cands.some(c=>!hasCM(c.prices))){$('pNote').textContent='Pobieram ceny…';await enrich(cands.slice(0,15)).catch(()=>{})}
     if(!cands.length){$('pNote').textContent='Nic nie znaleziono. Popraw nazwę lub numer i szukaj ponownie.';return}
     $('pNote').textContent=cands.length==1?'Znaleziono kartę — sprawdź i dodaj.':`Znaleziono ${cands.length}. Wybierz tę, która wygląda jak Twoja.`;
     $('pList').innerHTML=cands.map((c,i)=>`<button class="cand" data-i="${i}">${c.img.startsWith('https://')?`<img src="${esc(c.img)}" alt="" loading="lazy">`:'<span></span>'}<span><b>${esc(c.name)}</b><span class="small">${esc(c.set)} · ${esc(c.number)}/${esc(c.total)}${c.rarity?' · '+esc(c.rarity):''}</span></span><span class="pr">${price(c.prices)?esc(pln(price(c.prices))):'—'}</span></button>`).join('');
@@ -329,7 +374,7 @@ $('pAdd').onclick=()=>{
   if(!selC)return;const variant=$('pVar').value,qty=Math.max(1,parseInt($('pQty').value)||1);
   const ex=cards.find(c=>c.id==selC.id&&c.variant==variant);
   if(ex){ex.qty+=qty;Object.assign(ex,{prices:selC.prices,cmUpd:selC.cmUpd});toast(`Masz już tę kartę — teraz ×${ex.qty}`)}
-  else{cards.push({...selC,variant,qty,added:Date.now()});toast(`Dodano: ${selC.name} (${pln(price(selC.prices,variant))})`)}
+  else{const n={...selC,variant,qty,added:Date.now()};delete n.loading;cards.push(n);toast(`Dodano: ${selC.name} (${pln(price(selC.prices,variant))})`)}
   sv('prevTotal',null);save();render();$('pick').close();if($('sets').open&&curSet)renderSet();
 };
 
@@ -353,9 +398,9 @@ function renderSets(){
   const syn={anniversary:'celebration',rocznica:'celebration',rocznicowy:'celebration',jubileusz:'celebration'};
   const words=q.split(/\s+/).filter(Boolean).map(w=>syn[w]||w);
   const list=allSets.d.filter(s=>{const t=(s.name+' '+s.series+' '+s.id).toLowerCase().replace(/[^a-z0-9 ]/g,'');return words.every(w=>t.includes(w))});
-  const mine={};cards.forEach(c=>{const sid=c.id.split('-').slice(0,-1).join('-');mine[sid]=(mine[sid]||new Set()).add(c.id)});
+  const mine={};cards.forEach(c=>{const k=(c.set||'').toLowerCase();mine[k]=(mine[k]||new Set()).add(c.id)});
   $('xNote').textContent=list.length?(q?`Znaleziono ${list.length}`:`${list.length} setów, od najnowszych`):'Nie ma takiego setu w bazie. Spróbuj innej nazwy (po angielsku) — nowe sety pojawiają się w bazie zwykle kilka dni po premierze.';
-  $('xList').innerHTML=list.slice(0,q?120:60).map(s=>{const n=mine[s.id]?.size||0;return`<button class="srow" data-id="${esc(s.id)}">${s.logo.startsWith('https://')?`<img src="${esc(s.logo)}" alt="" loading="lazy">`:'<span></span>'}<span><b>${esc(s.name)}</b><span class="small">${esc(s.series)} · ${esc((s.rel||'').slice(0,4))} · ${esc(s.total)} kart</span></span><span class="own">${n?n+'/'+esc(s.total):''}</span></button>`}).join('');
+  $('xList').innerHTML=list.slice(0,q?120:60).map(s=>{const n=mine[s.name.toLowerCase()]?.size||0;return`<button class="srow" data-id="${esc(s.id)}">${s.logo.startsWith('https://')?`<img src="${esc(s.logo)}" alt="" loading="lazy">`:'<span></span>'}<span><b>${esc(s.name)}</b><span class="small">${esc(s.series)} · ${esc((s.rel||'').slice(0,4))} · ${esc(s.total)} kart</span></span><span class="own">${n?n+'/'+esc(s.total):''}</span></button>`}).join('');
 }
 async function openSet(id){
   curSet=allSets.d.find(s=>s.id==id);if(!curSet)return;
@@ -366,9 +411,31 @@ async function openSet(id){
     setCards=[];let page=1;
     while(true){const j=await get(`${API}?q=${encodeURIComponent('set.id:'+id)}&select=${FIELDS}&pageSize=250&page=${page}`);setCards.push(...j.data.map(fromApi));if(setCards.length>=j.totalCount||!j.data.length)break;page++}
     if(curSet.id!=id)return;
+    if(!setCards.length){await openTdxSet(id);return}
+    renderSet();
+    if(setCards.some(c=>!hasCM(c.prices))){
+      setCards.forEach(c=>{if(!hasCM(c.prices))c.loading=true});renderSet();
+      let t=0;await enrich(setCards,()=>{if(Date.now()-t>700){t=Date.now();if(curSet?.id==id)renderSet()}}).catch(()=>{});
+      setCards.forEach(c=>delete c.loading);
+    }
+    if(curSet?.id!=id)return;
     for(const f of setCards)cards.filter(c=>c.id==f.id).forEach(c=>Object.assign(c,{prices:f.prices,cmUpd:f.cmUpd,cmUrl:f.cmUrl}));save();render();
     renderSet();
   }catch(e){$('xGrid').innerHTML='<div class="empty err" style="grid-column:1/-1">'+esc(e.message.includes('fetch')?'Brak połączenia z bazą kart.':e.message)+'</div>'}
+}
+async function openTdxSet(id){
+  $('xGrid').innerHTML='<div class="empty" style="grid-column:1/-1">Ten set jest nowy — pobieram karty z drugiej bazy (TCGdex)…</div>';
+  const ts=await tdxFindSet(curSet.name);
+  if(!ts){$('xGrid').innerHTML='<div class="empty" style="grid-column:1/-1">Karty z tego setu nie są jeszcze dostępne w żadnej bazie. Spróbuj za kilka dni.</div>';return}
+  const d=await get(TDX+'/sets/'+encodeURIComponent(ts.id));if(curSet?.id!=id)return;
+  const info={name:curSet.name,total:d.cardCount?.official||curSet.pt,rel:curSet.rel};
+  setCards=(d.cards||[]).map(b=>({...fromTdx({...b,set:{name:curSet.name,cardCount:{official:info.total}}},info),loading:true}));
+  if(d.logo&&!$('xLogo').getAttribute('src'))$('xLogo').src=d.logo+'.png';
+  renderSet();
+  let t=0;const tick=()=>{if(Date.now()-t>700){t=Date.now();renderSet()}};
+  await pool(setCards.slice(),6,async(c,k)=>{if(curSet?.id!=id)return;const f=fromTdx(await tdxCard(c.tid),info);const i=setCards.findIndex(x=>x.id==c.id);if(i>=0)setCards[i]=f;
+    cards.filter(x=>x.id==f.id).forEach(x=>Object.assign(x,{prices:f.prices,cmUpd:f.cmUpd,usd:f.usd}));tick()});
+  if(curSet?.id!=id)return;save();render();renderSet();
 }
 function renderSet(){
   const f=$('xf').value,s=$('xs').value;
@@ -378,7 +445,7 @@ function renderSet(){
   $('xProg').textContent=`Masz ${have.length} z ${tot} kart (${tot?Math.round(have.length/tot*100):0}%) · Twoje: ${pln(haveVal)} · cały set (po 1 szt.): ${pln(setVal)}`;
   let list=setCards.filter(c=>f=='all'||(f=='have')==!!owned(c.id));
   list.sort(s=='val'?(a,b)=>price(b.prices)-price(a.prices):byNum);
-  $('xGrid').innerHTML=list.length?list.map(c=>{const o=owned(c.id);return`<button class="c${o?'':' miss'}" data-id="${esc(c.id)}"><div class="im">${c.img.startsWith('https://')?`<img loading="lazy" src="${esc(c.img)}" alt="">`:''}${o?`<span class="ok">✓${o>1?' ×'+o:''}</span>`:''}<span class="v">${price(c.prices)?esc(pln(price(c.prices))):'—'}</span></div><h3>${esc(c.name)}</h3><p>${esc(c.number)}/${esc(c.total)}${c.rarity?' · '+esc(c.rarity):''}</p></button>`}).join(''):`<div class="empty" style="grid-column:1/-1">${f=='miss'?'Masz komplet! 🎉':'Brak kart do pokazania.'}</div>`;
+  $('xGrid').innerHTML=list.length?list.map(c=>{const o=owned(c.id);return`<button class="c${o?'':' miss'}" data-id="${esc(c.id)}"><div class="im">${c.img.startsWith('https://')?`<img loading="lazy" src="${esc(c.img)}" alt="">`:''}${o?`<span class="ok">✓${o>1?' ×'+o:''}</span>`:''}<span class="v">${price(c.prices)?esc(pln(price(c.prices))):(c.loading?'…':'—')}</span></div><h3>${esc(c.name)}</h3><p>${esc(c.number)}/${esc(c.total)}${c.rarity?' · '+esc(c.rarity):''}</p></button>`}).join(''):`<div class="empty" style="grid-column:1/-1">${f=='miss'?'Masz komplet! 🎉':'Brak kart do pokazania.'}</div>`;
 }
 $('xGrid').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const c=setCards.find(x=>x.id==b.dataset.id);if(!c)return;
   openPick({},' ');$('pTitle').textContent='Dodać do kolekcji?';$('pq').value=c.name;$('pn').value=c.number+'/'+c.total;
@@ -397,6 +464,7 @@ $('grid').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const [id,v]=b
   $('dMeta').textContent=`${cur.set} · ${cur.number}/${cur.total}${cur.rarity?' · '+cur.rarity:''}`;
   $('dVal').textContent=pln(val(cur)*cur.qty);$('dEach').textContent=cur.qty>1?`${pln(val(cur))} za sztukę`:'';
   const p=cur.prices||{},rows=[['Trend',p.trendPrice],['Średnia 7 dni',p.avg7],['Średnia 30 dni',p.avg30],['Najniższa oferta',p.lowPrice],['Reverse Holo — trend',p.reverseHoloTrend]].filter(r=>r[1]);
+  if(!hasCM(p)&&p.usdMarket)rows.push(['Szacunek z TCGplayer (brak ceny Cardmarket)',p.usdMarket*(cfg.usd2eur||0.92)]);
   $('dTab').innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${esc(pln(r[1]))} <span class="small">(${(+r[1]).toFixed(2)} €)</span></td></tr>`).join('')+(cur.usd?`<tr><td>TCGplayer (USA)</td><td>$${(+cur.usd).toFixed(2)}</td></tr>`:'')+(cur.cmUpd?`<tr><td class="small">Dane z dnia</td><td class="small">${esc(cur.cmUpd)}</td></tr>`:'')||'<tr><td>Brak cen dla tej karty w bazie.</td><td></td></tr>';
   $('dVar').value=cur.variant;$('dQty').value=cur.qty;
   const link=cur.cmUrl&&cur.cmUrl.startsWith('https://')?cur.cmUrl:'https://www.cardmarket.com/pl/Pokemon/Products/Search?searchString='+encodeURIComponent(cur.name);
@@ -411,19 +479,23 @@ async function refresh(silent){
   if(!cards.length)return;$('refresh').disabled=true;if(!silent)toast('Odświeżam ceny…');
   const before=cards.reduce((t,c)=>t+val(c)*c.qty,0);
   try{
-    const ids=[...new Set(cards.map(c=>c.id))];
+    const ids=[...new Set(cards.filter(c=>c.src!='tdx').map(c=>c.id))];
     for(let i=0;i<ids.length;i+=40){
       const res=await api('('+ids.slice(i,i+40).map(id=>`id:"${id}"`).join(' OR ')+')','&pageSize=250');
       for(const d of res){const f=fromApi(d);cards.filter(c=>c.id==f.id).forEach(c=>Object.assign(c,{prices:f.prices,cmUrl:f.cmUrl,cmUpd:f.cmUpd,usd:f.usd,img:f.img,imgL:f.imgL}))}
     }
+    await enrich(cards).catch(()=>{});
+    const tids=[...new Set(cards.filter(c=>c.src=='tdx').map(c=>c.tid))];
+    await pool(tids,6,async tid=>{const f=fromTdx(await tdxCard(tid));cards.filter(c=>c.id==f.id).forEach(c=>Object.assign(c,{prices:f.prices,cmUpd:f.cmUpd,usd:f.usd,rarity:f.rarity||c.rarity}))});
     sv('prevTotal',before);sv('lastUpd',Date.now());save();render();if(!silent)toast('Ceny zaktualizowane');
   }catch(e){if(!silent)toast(e.message.includes('fetch')?'Brak internetu':e.message)}
   $('refresh').disabled=false;
 }
 $('refresh').onclick=()=>refresh();
+async function rateUsd(){try{const r=await fetch('https://api.nbp.pl/api/exchangerates/rates/a/usd/?format=json');const j=await r.json();const m=j.rates?.[0]?.mid;if(m>0&&cfg.rate>0){cfg.usd2eur=m/cfg.rate;sv('cfg',cfg)}}catch(e){}}
 async function rate(){
   const today=new Date().toISOString().slice(0,10);if(cfg.rateDate==today)return;
-  try{const r=await fetch('https://api.nbp.pl/api/exchangerates/rates/a/eur/?format=json');const j=await r.json();const m=j.rates?.[0]?.mid;if(m>0){cfg.rate=m;cfg.rateDate=today;cfg.rateSrc=j.rates[0].effectiveDate;sv('cfg',cfg);render()}}catch(e){}
+  try{const r=await fetch('https://api.nbp.pl/api/exchangerates/rates/a/eur/?format=json');const j=await r.json();const m=j.rates?.[0]?.mid;if(m>0){cfg.rate=m;cfg.rateDate=today;cfg.rateSrc=j.rates[0].effectiveDate;sv('cfg',cfg);await rateUsd();render()}}catch(e){}
 }
 
 /* ---------- ustawienia ---------- */
@@ -439,7 +511,7 @@ $('sImp').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)r
   for(const c of ok){const ex=cards.find(x=>x.id==c.id&&x.variant==c.variant);if(ex)ex.qty=Math.max(ex.qty,c.qty);else cards.push(c)}save();render();toast(`Zaimportowano ${ok.length} kart`);$('set').close()}catch(err){toast('To nie jest plik kopii kolekcji')}};
 
 $('q').oninput=render;$('sort').onchange=render;
-render();rate();
+render();rate().then(()=>{if(!cfg.usd2eur)rateUsd()});
 if(Date.now()-ld('lastUpd',0)>6*3600e3)refresh(true);
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
