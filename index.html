@@ -664,13 +664,13 @@ function drawHist(){
 $('hRange').onclick=e=>{const b=e.target.closest('button');if(!b)return;hRange=+b.dataset.r;document.querySelectorAll('#hRange button').forEach(x=>x.classList.toggle('on',x===b));drawHist()};
 
 /* ---------- podgląd karty ---------- */
-let viewC=null;
+let viewC=null;const retrying=new Set();
 function shopLinks(c){
   const q=c.name+' '+String(c.number).replace(/^0+(?=\d)/,'')+(c.total?'/'+c.total:'');
   const qn=encodeURIComponent(q),qs=encodeURIComponent(c.name+' '+c.set);
   const gq=encodeURIComponent('site:cardmarket.com '+c.name+' '+c.set+' '+String(c.number).replace(/^0+(?=\d)/,''));const cm=c.cmUrl&&c.cmUrl.startsWith('https://')?c.cmUrl:'https://www.google.com/search?q='+gq;
   const tp=c.tpUrl&&c.tpUrl.startsWith('https://')?c.tpUrl:'https://www.tcgplayer.com/search/pokemon/product?q='+qs;
-  return [['Kup / sprzedaj na Cardmarket ↗\uFE0E',cm,'main'],...(c.cmUrl?[['Cardmarket — szukaj ↗\uFE0E','https://www.google.com/search?q='+gq]]:[]),['Allegro ↗\uFE0E','https://allegro.pl/listing?string='+qn],['OLX ↗\uFE0E','https://www.olx.pl/oferty/q-'+encodeURIComponent(q.replace(/\//g,' ').replace(/\s+/g,'-'))+'/'],['eBay ↗\uFE0E','https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent('pokemon '+q)],['TCGplayer ↗\uFE0E',tp]];
+  return [['Kup / sprzedaj na Cardmarket ↗\uFE0E',cm,'main'],...(c.cmUrl?[['Cardmarket — szukaj ↗\uFE0E','https://www.google.com/search?q='+gq]]:[]),['Allegro ↗\uFE0E','https://allegro.pl/listing?string='+qn],['OLX ↗\uFE0E','https://www.olx.pl/oferty/q-'+encodeURIComponent(q.replace(/\//g,' ').replace(/\s+/g,'-'))+'/'],['eBay — sprzedane ↗\uFE0E','https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent('pokemon '+q)+'&LH_Sold=1&LH_Complete=1&_sop=13'],['eBay — oferty ↗\uFE0E','https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent('pokemon '+q)],['TCGplayer ↗\uFE0E',tp]];
 }
 function openCard(c,mine){
   viewC=c;cur=mine||null;const variant=mine?mine.variant:(/reverse/i.test(c.rarity)?'reverse':'normal');
@@ -695,6 +695,13 @@ function openCard(c,mine){
   const o=owned(c.id);$('dOwnNote').textContent=!mine&&o?`Masz już ${o} szt. tej karty — dodanie zwiększy ilość.`:'';
   $('det').showModal();$('det').scrollTop=0;
   lineChart($('dSvg'),hp,$('dTip'),'Historia zbiera się od dziś');
+  if(!price(c.prices)&&!retrying.has(c.id)){retrying.add(c.id);$('dVal').textContent='pobieram cenę…';
+    (async()=>{try{let f=null;
+      if(c.tid)f=fromTdx(await tdxCard(c.tid));
+      else{try{const j=await get(API+'/'+encodeURIComponent(c.id)+'?select='+FIELDS);if(j&&j.data)f=fromApi(j.data)}catch(e){}if(!f||!price(f.prices)){const t={...c,prices:{...(f?f.prices:c.prices)}};await enrich([t]);f={...(f||c),prices:t.prices}}}
+      if(f&&price(f.prices)){[c,...cards.filter(x=>x.id==c.id&&x!==c)].forEach(x=>Object.assign(x,{prices:f.prices,cmUpd:f.cmUpd||x.cmUpd,usd:f.usd||x.usd}));save();render();if($('det').open&&viewC===c)openCard(c,mine)}
+      else if($('det').open&&viewC===c)$('dVal').textContent='brak ceny';
+    }catch(e){if($('det').open&&viewC===c)$('dVal').textContent='brak ceny'}finally{retrying.delete(c.id)}})()}
 }
 $('grid').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const [id,v]=b.dataset.id.split('|');const c=cards.find(x=>x.id==id&&x.variant==v);if(c)openCard(c,c)};
 $('dZoom').onclick=()=>{if($('zImg').src){$('zoom').hidden=false;try{$('zoom').setAttribute('popover','manual');$('zoom').showPopover()}catch(e){}}};
@@ -712,18 +719,21 @@ $('dAdd').onclick=()=>{const c=viewC;if(!c)return;const variant=$('dVar').value,
 /* ---------- odświeżanie cen ---------- */
 async function refresh(silent){
   if(!cards.length)return;$('refresh').disabled=true;if(!silent)toast('Odświeżam ceny…');
-  const before=cards.reduce((t,c)=>t+val(c)*c.qty,0);
-  try{
-    const ids=[...new Set(cards.filter(c=>c.src!='tdx').map(c=>c.id))];
-    for(let i=0;i<ids.length;i+=40){
-      const res=await api('('+ids.slice(i,i+40).map(id=>`id:"${id}"`).join(' OR ')+')','&pageSize=250');
-      for(const d of res){const f=fromApi(d);cards.filter(c=>c.id==f.id).forEach(c=>Object.assign(c,{prices:f.prices,cmUrl:f.cmUrl,cmUpd:f.cmUpd,usd:f.usd,img:f.img,imgL:f.imgL}))}
-    }
-    await enrich(cards).catch(()=>{});
-    const tids=[...new Set(cards.filter(c=>c.src=='tdx').map(c=>c.tid))];
-    await pool(tids,6,async tid=>{const f=fromTdx(await tdxCard(tid));cards.filter(c=>c.id==f.id).forEach(c=>Object.assign(c,{prices:f.prices,cmUpd:f.cmUpd,usd:f.usd,rarity:f.rarity||c.rarity}))});
-    sv('prevTotal',before);sv('lastUpd',Date.now());save();render();snapshot();if(!silent)toast('Ceny zaktualizowane');
-  }catch(e){if(!silent)toast(e.message.includes('fetch')?'Brak internetu':e.message)}
+  const before=cards.reduce((t,c)=>t+val(c)*c.qty,0);let ok=0,fail=0;
+  const apply=f=>{cards.filter(c=>c.id==f.id).forEach(c=>Object.assign(c,{prices:f.prices,cmUrl:f.cmUrl,cmUpd:f.cmUpd,usd:f.usd,img:f.img||c.img,imgL:f.imgL||c.imgL,tpUrl:f.tpUrl||c.tpUrl}));ok++};
+  const ids=[...new Set(cards.filter(c=>c.src!='tdx').map(c=>c.id))];
+  // małe paczki; gdy paczka się nie uda — karta po karcie; błędy nie przerywają odświeżania
+  for(let i=0;i<ids.length;i+=12){
+    const part=ids.slice(i,i+12);
+    try{const res=await api('('+part.map(id=>`id:"${id}"`).join(' OR ')+')','&pageSize=250');res.forEach(d=>apply(fromApi(d)))}
+    catch(e){await pool(part,3,async id=>{try{const j=await get(API+'/'+encodeURIComponent(id)+'?select='+FIELDS);if(j&&j.data)apply(fromApi(j.data))}catch(e2){fail++}})}
+  }
+  try{await enrich(cards)}catch(e){}
+  const tids=[...new Set(cards.filter(c=>c.src=='tdx').map(c=>c.tid))];
+  await pool(tids,6,async tid=>{try{const f=fromTdx(await tdxCard(tid));cards.filter(c=>c.id==f.id).forEach(c=>Object.assign(c,{prices:f.prices,cmUpd:f.cmUpd,usd:f.usd,rarity:f.rarity||c.rarity}));ok++}catch(e){fail++}});
+  if(ok){sv('prevTotal',before);sv('lastUpd',Date.now())}
+  save();render();snapshot();
+  if(!silent)toast(!ok?'Bazy kart nie odpowiadają — spróbuj za chwilę':fail?`Zaktualizowano ceny (${fail} kart pominięto — błąd bazy)`:'Ceny zaktualizowane');
   $('refresh').disabled=false;
 }
 $('refresh').onclick=()=>refresh();
