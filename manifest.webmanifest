@@ -1,0 +1,17 @@
+{
+  "name": "Segregator kart",
+  "short_name": "Segregator",
+  "description": "Skanuj karty Pokémon TCG i śledź wartość kolekcji z cenami Cardmarket.",
+  "lang": "pl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#121214",
+  "theme_color": "#e3350d",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
