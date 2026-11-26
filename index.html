@@ -144,7 +144,7 @@ dialog.full .sh{padding-top:calc(var(--st) + 14px)}
 <div id="scan" aria-modal="true" role="dialog" aria-label="Skaner">
   <video id="vid" playsinline muted autoplay></video>
   <div id="frame"></div>
-  <div class="shint">Ustaw kartę w ramce. Numer karty (np. 025/165) w żółtym polu.</div>
+  <div class="shint" id="shint">Ustaw kartę w ramce. Numer karty (np. 025/165) w żółtym polu.</div>
   <button id="sclose" class="btn">Zamknij</button>
   <div id="sstat"></div>
   <div class="sbar">
@@ -262,12 +262,20 @@ async function pool(items,n,fn){let i=0;await Promise.all(Array.from({length:Mat
 const tdxCard=id=>get(TDX+'/cards/'+encodeURIComponent(id));
 let tdxSets=ld('tdxSets',null);
 async function tdxFindSet(name){
-  if(!tdxSets||Date.now()-tdxSets.t>86400e3){const j=await get(TDX+'/sets');tdxSets={t:Date.now(),d:j.map(s=>({id:s.id,name:s.name}))};sv('tdxSets',tdxSets)}
+  if(!tdxSets||Date.now()-tdxSets.t>86400e3||!tdxSets.d?.length||tdxSets.d[0].off===undefined){const j=await get(TDX+'/sets');tdxSets={t:Date.now(),d:j.map(s=>({id:s.id,name:s.name,off:s.cardCount?.official||0}))};sv('tdxSets',tdxSets)}
   const n=x=>String(x).toLowerCase().replace(/[^a-z0-9]/g,'');const t=n(name);
   const ex=tdxSets.d.find(s=>n(s.name)==t);if(ex)return ex;
   // tylko bardzo podobne nazwy — nie myl np. "30th Celebration" z "30th Celebration: Classic Collection"
   const c=tdxSets.d.filter(s=>{const a=n(s.name);return (a.includes(t)||t.includes(a))&&Math.min(a.length,t.length)/Math.max(a.length,t.length)>=0.85});
   return c.sort((x,y)=>Math.abs(n(x.name).length-t.length)-Math.abs(n(y.name).length-t.length))[0];
+}
+async function tdxByNumber(num,tot){
+  await tdxFindSet('__init__').catch(()=>{});if(!tdxSets)return[];
+  const sets=tdxSets.d.filter(s=>s.off==+tot).slice(-8);const n=String(num).replace(/^0+(?=\d)/,'');
+  const ids=[];sets.forEach(s=>[n.padStart(3,'0'),n,n.padStart(2,'0')].forEach(v=>ids.push(s.id+'-'+v)));
+  const out=[],seen=new Set();
+  await pool([...new Set(ids)],6,async id=>{try{const d=await get(TDX+'/cards/'+encodeURIComponent(id),1);if(d&&d.id&&!seen.has(d.id)){seen.add(d.id);out.push(fromTdx(d))}}catch(e){}});
+  return out;
 }
 const tdxSetCache={};
 async function tdxSetCards(setName){
@@ -309,22 +317,28 @@ function render(){
 }
 
 /* ---------- kamera ---------- */
+const CW=900,CH=Math.round(900*88/63);
+let live=null,liveBusy=false,liveHits=[];
 async function openScan(){
-  $('scan').classList.add('on');$('sstat').style.display='none';
+  $('scan').classList.add('on');$('sstat').style.display='none';liveHits=[];setLive('Uruchamiam aparat…');
   try{
-    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1440}},audio:false});
     $('vid').srcObject=stream;await $('vid').play();
     track=stream.getVideoTracks()[0];
+    try{await track.applyConstraints({advanced:[{focusMode:'continuous'}]})}catch(e){}
     const caps=track.getCapabilities?track.getCapabilities():{};$('torch').style.visibility=caps.torch?'visible':'hidden';
+    setLive('Przygotowuję skaner…');
   }catch(e){stat('Brak dostępu do aparatu. Zezwól w Ustawieniach → Safari → Aparat albo użyj „Galeria”.')}
-  initOCR();
+  try{await initOCR()}catch(e){}
+  if(stream){setLive('Celuj w kartę — numer w żółtym polu');clearInterval(live);live=setInterval(liveTick,700)}
 }
-function closeScan(){$('scan').classList.remove('on');if(stream)stream.getTracks().forEach(t=>t.stop());stream=null}
+function closeScan(){clearInterval(live);live=null;$('scan').classList.remove('on');if(stream)stream.getTracks().forEach(t=>t.stop());stream=null}
 function stat(t){const e=$('sstat');e.textContent=t;e.style.display=t?'block':'none'}
+function setLive(t){const e=$('shint');if(e)e.textContent=t}
 let torchOn=false;$('torch').onclick=async()=>{try{torchOn=!torchOn;await track.applyConstraints({advanced:[{torch:torchOn}]})}catch(e){}};
 
 function initOCR(){
-  if(worker||!window.Tesseract)return worker;
+  if(worker)return worker;if(!window.Tesseract)return Promise.reject(new Error('brak'));
   worker=Tesseract.createWorker('eng',1,{}).catch(e=>{worker=null;throw e});
   return worker;
 }
@@ -333,52 +347,132 @@ function cropFromVideo(){
   const vw=v.videoWidth,vh=v.videoHeight;if(!vw)return null;
   const sc=Math.max(vb.width/vw,vb.height/vh),ox=(vb.width-vw*sc)/2,oy=(vb.height-vh*sc)/2;
   const sx=(f.left-vb.left-ox)/sc,sy=(f.top-vb.top-oy)/sc,sw=f.width/sc,sh=f.height/sc;
-  const cv=document.createElement('canvas');cv.width=630;cv.height=880;cv.getContext('2d').drawImage(v,sx,sy,sw,sh,0,0,630,880);return cv;
+  const cv=document.createElement('canvas');cv.width=CW;cv.height=CH;cv.getContext('2d').drawImage(v,sx,sy,sw,sh,0,0,CW,CH);return cv;
 }
 function cropFromImage(img){
   const r=63/88;let w=img.width,h=img.height,sw,sh;if(w/h>r){sh=h;sw=h*r}else{sw=w;sh=w/r}
-  const cv=document.createElement('canvas');cv.width=630;cv.height=880;cv.getContext('2d').drawImage(img,(w-sw)/2,(h-sh)/2,sw,sh,0,0,630,880);return cv;
+  const cv=document.createElement('canvas');cv.width=CW;cv.height=CH;cv.getContext('2d').drawImage(img,(w-sw)/2,(h-sh)/2,sw,sh,0,0,CW,CH);return cv;
 }
-function strip(src,x,y,w,h,scale,thr){
-  const cv=document.createElement('canvas');cv.width=Math.round(630*w*scale);cv.height=Math.round(880*h*scale);
-  const g=cv.getContext('2d');g.imageSmoothingQuality='high';g.drawImage(src,630*x,880*y,630*w,880*h,0,0,cv.width,cv.height);
-  const d=g.getImageData(0,0,cv.width,cv.height),p=d.data;let sum=0;
-  for(let i=0;i<p.length;i+=4){const l=.3*p[i]+.59*p[i+1]+.11*p[i+2];p[i]=p[i+1]=p[i+2]=l;sum+=l}
-  if(thr){const m=sum/(p.length/4);let dark=0;for(let i=0;i<p.length;i+=4)if(p[i]<m)dark++;const inv=dark>p.length/8;for(let i=0;i<p.length;i+=4){let v=p[i]<m*.85?0:255;if(inv)v=255-v;p[i]=p[i+1]=p[i+2]=v}}
+/* wycinek karty -> skala szarości, rozciągnięty kontrast, opcjonalnie próg Otsu (mode 1) lub odwrócony (2) */
+function region(src,x,y,w,h,outH,mode){
+  const W=src.width,H=src.height,sw=W*w,sh=H*h,k=outH/sh;
+  const cv=document.createElement('canvas');cv.width=Math.round(sw*k);cv.height=Math.round(outH);
+  const g=cv.getContext('2d');g.imageSmoothingQuality='high';g.drawImage(src,W*x,H*y,sw,sh,0,0,cv.width,cv.height);
+  const d=g.getImageData(0,0,cv.width,cv.height),p=d.data,n=p.length/4,hist=new Array(256).fill(0);let lo=255,hi=0;
+  for(let i=0;i<p.length;i+=4){const l=Math.round(.3*p[i]+.59*p[i+1]+.11*p[i+2]);p[i]=l;hist[l]++}
+  let acc=0;for(let v=0;v<256;v++){acc+=hist[v];if(acc>n*.02){lo=v;break}}acc=0;for(let v=255;v>=0;v--){acc+=hist[v];if(acc>n*.02){hi=v;break}}
+  const rng=Math.max(1,hi-lo);
+  let t=128;if(mode){let sum=0;for(let v=0;v<256;v++)sum+=v*hist[v];let sB=0,wB=0,best=0;for(let v=0;v<256;v++){wB+=hist[v];if(!wB)continue;const wF=n-wB;if(!wF)break;sB+=v*hist[v];const mB=sB/wB,mF=(sum-sB)/wF,b=wB*wF*(mB-mF)**2;if(b>best){best=b;t=v}}}
+  let dark=0;for(let i=0;i<p.length;i+=4)if(p[i]<t)dark++;const inv=mode==2||(mode&&dark>n*.5);
+  for(let i=0;i<p.length;i+=4){let v=mode?(p[i]<t?0:255):Math.max(0,Math.min(255,(p[i]-lo)*255/rng));if(inv)v=255-v;p[i]=p[i+1]=p[i+2]=v}
   g.putImageData(d,0,0);return cv;
 }
-async function recognize(card){
-  shot=card.toDataURL('image/jpeg',.7);
-  stat('Czytam numer karty…');
-  let w;try{w=await initOCR()}catch(e){}
-  if(!w){stat('');closeScan();openPick({},'Nie udało się uruchomić skanera (sprawdź internet). Wpisz nazwę lub numer.');return}
-  let num=null,total=null,code=null,name='';
-  try{
-    await w.setParameters({tessedit_pageseg_mode:'11',tessedit_char_whitelist:'0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ'});
-    let txt='';
-    for(const t of [false,true]){
-      const r=await w.recognize(strip(card,0,.875,1,.125,2.6,t));txt+=' '+r.data.text;
-      const m=txt.replace(/[Oo]/g,'0').match(/(?:^|[^0-9])([A-Z]{0,3}\d{1,3})\s*\/\s*([A-Z]{0,3}\d{2,3})/);
-      if(m){num=m[1];total=m[2];break}
-    }
-    if(!num){const pm=txt.match(/\b(SVP|SWSH|SM|XY|BW)\s*0*(\d{1,3})\b/);if(pm){code=pm[1];num=pm[2]}}
-    stat('Czytam nazwę…');
-    await w.setParameters({tessedit_pageseg_mode:'7',tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzéÉ\'-. '});
-    const rn=await w.recognize(strip(card,.04,.025,.66,.075,2.2,false));
-    const bad=/^(basic|stage|hp|pokemon|pokémon|tera|ex|gx|vmax|vstar|evolves|from|trainer|item|supporter)$/i;
-    name=(rn.data.text.match(/[A-Za-zéÉ'.-]{3,}/g)||[]).filter(x=>!bad.test(x)).sort((a,b)=>b.length-a.length)[0]||'';
-  }catch(e){}
-  stat('Szukam w bazie…');
-  closeScan();stat('');
-  openPick({num,total,code,name});
+const DIGIT={O:'0',Q:'0',D:'0',U:'0',I:'1',L:'1','|':'1',T:'7',S:'5',B:'8',Z:'2',G:'6'};
+const fixNum=s=>s.replace(/[OQDUIL|TSBZG]/g,c=>DIGIT[c]);
+function parseNum(txt){
+  const t=String(txt).toUpperCase().replace(/[\\]/g,'/');
+  // np. 025/165, TG05/TG30, GG12/GG70, 4/102
+  const re=/(?:^|[^0-9])((?:TG|GG|SV|RC)?[0-9OQDILSBZ|]{1,3})\s*\/\s*((?:TG|GG|SV|RC)?[0-9OQDILSBZ|]{2,3})(?![0-9])/g;let m;
+  while(m=re.exec(t)){
+    const pa=m[1].match(/^(TG|GG|SV|RC)?(.*)$/),pb=m[2].match(/^(TG|GG|SV|RC)?(.*)$/);
+    const a=(pa[1]||'')+fixNum(pa[2]),b=(pb[1]||'')+fixNum(pb[2]);
+    const na=parseInt(a.replace(/\D/g,''),10),nb=parseInt(b.replace(/\D/g,''),10);
+    if(!/\d/.test(a)||!/\d/.test(b)||!(nb>=10&&nb<=400)||!(na>=1&&na<=nb+150))continue;
+    let A2=a;if(pa[1]&&pb[1]){const da=a.replace(/\D/g,''),db=b.replace(/\D/g,'');if(da.length>db.length)A2=pa[1]+da.slice(0,db.length)}
+    return{num:A2,total:b};
+  }
+  const pm=t.match(/\b(SVP|SWSH|SM|XY|BW)\s*([0-9OQDILSBZ]{1,3})\b/);if(pm)return{num:fixNum(pm[2]),code:pm[1]};
+  return null;
 }
-$('shoot').onclick=()=>{const c=cropFromVideo();if(!c){stat('Aparat jeszcze się uruchamia…');return}if(track&&torchOn){}recognize(c)};
+/* znajdź linie tekstu w dolnej części karty (projekcja pozioma) */
+function textLines(card){
+  const W=card.width,H=card.height,y0=Math.round(H*.855),y1=Math.round(H*.992),x0=Math.round(W*.035),x1=Math.round(W*.965);
+  const g=card.getContext('2d').getImageData(x0,y0,x1-x0,y1-y0),p=g.data,w=x1-x0,hh=y1-y0;
+  const L=new Uint8Array(w*hh);let sum=0;for(let i=0;i<w*hh;i++){const l=.3*p[i*4]+.59*p[i*4+1]+.11*p[i*4+2];L[i]=l;sum+=l}
+  const mean=sum/(w*hh);let dark=0;for(let i=0;i<w*hh;i++)if(L[i]<mean)dark++;const inv=dark>w*hh*.6;
+  const rows=[];for(let y=0;y<hh;y++){let c=0;for(let x=0;x<w;x++){const v=L[y*w+x];if(inv?v>mean+35:v<mean-35)c++}rows.push(c/w)}
+  const bands=[];let st=-1;for(let y=0;y<=hh;y++){const on=y<hh&&rows[y]>.008;if(on&&st<0)st=y;if(!on&&st>=0){if(y-st>=H*.006)bands.push([st,y]);st=-1}}
+  // połącz bardzo bliskie pasy (np. kreska ułamka i cyfry)
+  const merged=[];for(const b of bands){const l=merged[merged.length-1];if(l&&b[0]-l[1]<H*.004)l[1]=b[1];else merged.push([...b])}
+  return merged.filter(b=>b[1]-b[0]<H*.05).map(b=>{const pad=Math.round((b[1]-b[0])*.45);return{x:x0,y:y0+Math.max(0,b[0]-pad),w:w,h:Math.min(hh,b[1]+pad)-Math.max(0,b[0]-pad)}}).reverse();
+}
+function lineImg(card,r,mode){
+  const k=Math.max(1,72/r.h);const cv=document.createElement('canvas');cv.width=Math.round(r.w*k);cv.height=Math.round(r.h*k);
+  const g=cv.getContext('2d');g.imageSmoothingQuality='high';g.drawImage(card,r.x,r.y,r.w,r.h,0,0,cv.width,cv.height);
+  return region(cv,0,0,1,1,cv.height,mode);
+}
+const NUM_AREAS=[[0,.885,.55,.095],[0,.875,1,.11],[.45,.885,.55,.095]];
+async function readNumber(card,quick){
+  const w=await initOCR();
+  await w.setParameters({tessedit_char_whitelist:'0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ|',preserve_interword_spaces:'1'});
+  const votes={};
+  const add=p=>{if(!p)return 0;const k=(p.num||'')+'/'+(p.total||'')+'|'+(p.code||'');votes[k]=votes[k]||{p,c:0};return ++votes[k].c};
+  // 1) wykryte linie tekstu — najpewniejsza metoda
+  const lines=textLines(card).slice(0,quick?2:3);
+  await w.setParameters({tessedit_pageseg_mode:'7'});
+  for(const mode of quick?[0]:[0,1]){
+    for(const r of lines){const t=(await w.recognize(lineImg(card,r,mode))).data.text;if(add(parseNum(t))>=2)return votes[Object.keys(votes).find(k=>votes[k].c>=2)].p}
+    if(quick&&Object.keys(votes).length)break;
+  }
+  // 2) zapasowo: stałe obszary
+  if(!quick||!Object.keys(votes).length){
+    const tries=quick?[[0,0,'7']]:[[0,0,'7'],[2,0,'7'],[1,0,'11'],[0,1,'7']];
+    for(const [a,mode,psm] of tries){
+      await w.setParameters({tessedit_pageseg_mode:psm});
+      const A=NUM_AREAS[a];const r=await w.recognize(region(card,A[0],A[1],A[2],A[3],Math.min(300,card.height*A[3]*2.4),mode));
+      if(add(parseNum(r.data.text))>=2)break;
+    }
+  }
+  const best=Object.values(votes).sort((x,y)=>y.c-x.c)[0];return best?best.p:null;
+}
+async function readName(card){
+  const w=await initOCR();
+  await w.setParameters({tessedit_pageseg_mode:'7',tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzéÉ\'-. '});
+  const bad=/^(basic|stage|stage1|stage2|hp|pokemon|pokémon|tera|evolves|from|trainer|item|supporter|put|on|the|card|of|mega)$/i;
+  const words=new Set();
+  for(const [x,y,ww,hh,mode] of [[.17,.028,.55,.06,0],[.06,.028,.62,.06,0],[.17,.028,.55,.06,1],[.06,.04,.62,.06,1]]){
+    const r=await w.recognize(region(card,x,y,ww,hh,80,mode));
+    (r.data.text.match(/[A-Za-zéÉ'.-]{3,}/g)||[]).filter(t=>!bad.test(t)).forEach(t=>words.add(t.replace(/^[.'-]+|[.'-]+$/g,'')));
+  }
+  return [...words].filter(x=>x.length>=3);
+}
+async function liveTick(){
+  if(liveBusy||!stream||!worker)return;liveBusy=true;
+  try{
+    const c=cropFromVideo();if(!c){liveBusy=false;return}
+    const p=await readNumber(c,true);
+    if(p&&stream){
+      const k=(p.num||'')+'/'+(p.total||'');liveHits.push(k);liveHits=liveHits.slice(-3);
+      setLive('Widzę numer '+k.replace(/\/$/,'')+' — trzymaj nieruchomo…');
+      if(liveHits.filter(x=>x==k).length>=2){clearInterval(live);live=null;try{navigator.vibrate&&navigator.vibrate(40)}catch(e){}await finish(c,p);liveBusy=false;return}
+    }else if(stream){setLive('Celuj w kartę — numer w żółtym polu')}
+  }catch(e){}
+  liveBusy=false;
+}
+async function finish(card,p){
+  shot=card.toDataURL('image/jpeg',.7);
+  stat('Czytam nazwę…');let names=[];try{names=await readName(card)}catch(e){}
+  closeScan();stat('');
+  const name=names.sort((a,b)=>b.length-a.length)[0]||'';
+  openPick({num:p?.num,total:p?.total,code:p?.code,name,names});
+}
+async function recognize(card){
+  clearInterval(live);live=null;
+  stat('Czytam numer karty…');
+  try{await initOCR()}catch(e){stat('');closeScan();openPick({},'Nie udało się uruchomić skanera (sprawdź internet). Wpisz nazwę lub numer.');return}
+  let p=null;try{p=await readNumber(card,false)}catch(e){}
+  await finish(card,p);
+}
+$('shoot').onclick=()=>{const c=cropFromVideo();if(!c){stat('Aparat jeszcze się uruchamia…');return}const wait=()=>liveBusy?setTimeout(wait,100):recognize(c);wait()};
 $('gal').onchange=e=>{const f=e.target.files[0];e.target.value='';if(!f)return;const img=new Image();img.onload=()=>{URL.revokeObjectURL(img.src);recognize(cropFromImage(img))};img.src=URL.createObjectURL(f)};
 $('sclose').onclick=closeScan;$('scanBtn').onclick=openScan;
 
 /* ---------- wybór karty ---------- */
-function sim(a,b){a=a.toLowerCase();b=(b||'').toLowerCase();if(!b)return 0;if(a.includes(b)||b.includes(a))return 10;let s=0;for(let i=0;i<Math.min(a.length,b.length);i++)if(a[i]==b[i])s++;return s}
-async function openPick(o,msg){
+function lev(a,b){const m=a.length,n=b.length;if(!m)return n;if(!n)return m;let pr=Array.from({length:n+1},(_,j)=>j);for(let i=1;i<=m;i++){const cu=[i];for(let j=1;j<=n;j++)cu[j]=Math.min(pr[j]+1,cu[j-1]+1,pr[j-1]+(a[i-1]==b[j-1]?0:1));pr=cu}return pr[n]}
+function sim(a,b){a=String(a||'').toLowerCase().replace(/[^a-z0-9]/g,'');b=String(b||'').toLowerCase().replace(/[^a-z0-9]/g,'');if(!a||!b)return 0;if(a.includes(b)||b.includes(a))return 10;return Math.max(0,10*(1-lev(a,b)/Math.max(a.length,b.length)))}
+function simAll(a,list){return Math.max(0,...(list||[]).map(x=>sim(a,x)))}
+let pickNames=[];
+async function openPick(o,msg){pickNames=o.names||(o.name?[o.name]:[]);
   $('pq').value=o.name||'';$('pn').value=o.num?(o.num.replace(/^0+(?=\d)/,'')+(o.total?'/'+o.total.replace(/^0+(?=\d)/,''):'')):'';
   $('pVar').value='normal';$('pQty').value=1;selC=null;$('pAdd').disabled=true;$('pList').innerHTML='';
   $('pTitle').textContent=o.num||o.name?'Która to karta?':'Dodaj kartę';
@@ -402,6 +496,8 @@ async function search(code){
     if(num&&!name&&!tot)tries.push(`number:${num}`);
     try{for(const t of tries){res=await api(t,'&orderBy=-set.releaseDate');if(res.length)break}}catch(e){res=[]}
     cands=res.map(fromApi);
+    if(!cands.length&&num&&/^\d+$/.test(tot)){$('pNote').textContent='Szukam w drugiej bazie…';try{cands=await tdxByNumber(num,tot)}catch(e){}}
+    if(!cands.length&&name&&name.replace(/[^A-Za-z]/g,'').length>=4){try{const r2=await api(`name:${name.replace(/[^A-Za-z]/g,'').slice(0,4)}*`,'&orderBy=-set.releaseDate');cands=r2.map(fromApi)}catch(e){}}
     if(!cands.length&&name){
       $('pNote').textContent='Szukam w drugiej bazie…';
       let brief=await get(TDX+'/cards?name='+encodeURIComponent(name));
@@ -410,7 +506,7 @@ async function search(code){
       await pool(brief,6,async b=>{const c=fromTdx(await tdxCard(b.id));if(!tot||String(c.total)==tot||brief.length<4)out.push(c)});
       cands=out.length?out:[];
     }
-    cands.sort((a,b)=>sim(b.name,name)-sim(a.name,name));
+    const nl=name?[name,...pickNames]:pickNames;cands.sort((a,b)=>simAll(b.name,nl)-simAll(a.name,nl));
     if(cands.some(c=>!hasCM(c.prices))){$('pNote').textContent='Pobieram ceny…';await enrich(cands.slice(0,15)).catch(()=>{})}
     if(!cands.length){$('pNote').textContent='Nic nie znaleziono. Popraw nazwę lub numer i szukaj ponownie.';return}
     $('pNote').textContent=cands.length==1?'Znaleziono kartę — sprawdź i dodaj.':`Znaleziono ${cands.length}. Wybierz tę, która wygląda jak Twoja.`;
