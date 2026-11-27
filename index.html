@@ -187,7 +187,7 @@ dialog.full .sh{padding-top:calc(var(--st) + 14px)}
   <h2>Ustawienia</h2>
   <label>Kurs EUR → PLN<input id="sRate" type="number" step="0.0001" inputmode="decimal"></label>
   <div class="note" id="sRateNote"></div>
-  <label>Rodzaj ceny<select id="sPt"><option value="buy">Cena zakupu teraz (najtańsza oferta)</option><option value="market">Cena rynkowa (trend / market)</option></select></label>
+  <label>Rodzaj ceny<select id="sPt"><option value="high">Najwyższa znana cena (wszystkie ceny z obu serwisów)</option><option value="buy">Cena zakupu teraz (najtańsza oferta)</option><option value="market">Cena rynkowa (trend / market)</option></select></label>
   <label>Sposób wyceny<select id="sSrc"><option value="max">Wyższa cena z Cardmarket i TCGplayer</option><option value="avg">Średnia Cardmarket + TCGplayer</option><option value="cm">Tylko Cardmarket (Europa)</option><option value="tp">Tylko TCGplayer (USA)</option></select></label>
   <div class="note">Gdy karta ma cenę tylko w jednym serwisie, aplikacja używa tej jednej.</div>
   <label>Klucz API Pokémon TCG (opcjonalny, większy limit zapytań)<input id="sKey" autocomplete="off" placeholder="z dev.pokemontcg.io"></label>
@@ -236,12 +236,21 @@ function tpPrice(p,variant){p=p||{};const u=variant=='reverse'?(p.usdRev||p.usdM
 function cmBuy(p,variant){p=p||{};return variant=='reverse'?(p.reverseHoloLow||p.lowPriceExPlus||p.lowPrice||0):(p.lowPriceExPlus||p.lowPrice||p.reverseHoloLow||0)}
 function tpBuy(p,variant){p=p||{};const u=variant=='reverse'?(p.usdLowRev||p.usdLow):(p.usdLow||p.usdLowRev);return (u||0)*(cfg.usd2eur||0.92)}
 function combine(a,b){const m=cfg.src||'max';if(m=='cm')return a||b;if(m=='tp')return b||a;if(m=='max')return Math.max(a,b);return a&&b?(a+b)/2:(a||b)}
+/* najwyższa ze wszystkich znanych cen tej karty (Cardmarket: trend, średnie, oferty; TCGplayer: market, oferty) */
+function highest(p,variant){p=p||{};const r=variant=='reverse';
+  const rev=[p.reverseHoloTrend,p.reverseHoloAvg1,p.reverseHoloAvg7,p.reverseHoloAvg30,p.reverseHoloSell,p.reverseHoloLow].filter(x=>+x>0);
+  const nor=[p.trendPrice,p.avg1,p.avg7,p.avg30,p.averageSellPrice,p.lowPriceExPlus,p.lowPrice].filter(x=>+x>0);
+  const cm=r?(rev.length?rev:nor):(nor.length?nor:rev);
+  const usd=(r?[p.usdRev,p.usdLowRev]:[p.usdMarket,p.usdLow]).filter(x=>+x>0);const usdAll=usd.length?usd:[p.usdMarket,p.usdLow,p.usdRev,p.usdLowRev].filter(x=>+x>0);
+  return Math.max(0,...cm.map(Number),...usdAll.map(x=>x*(cfg.usd2eur||0.92)));
+}
 function price(p,variant){
+  if((cfg.ptype||'high')=='high')return highest(p,variant);
   const mk=combine(cmPrice(p,variant),tpPrice(p,variant));
-  if((cfg.ptype||'buy')=='market')return mk;
+  if(cfg.ptype=='market')return mk;
   const by=combine(cmBuy(p,variant),tpBuy(p,variant));return by||mk;
 }
-const srcLabel=()=>((cfg.ptype||'buy')=='buy'?'cena zakupu, ':'cena rynkowa, ')+({cm:'Cardmarket',tp:'TCGplayer',avg:'średnia Cardmarket + TCGplayer',max:'wyższa z Cardmarket i TCGplayer'})[cfg.src||'max'];
+const srcLabel=()=>(cfg.ptype||'high')=='high'?'najwyższa znana cena z Cardmarket i TCGplayer':(cfg.ptype=='buy'?'cena zakupu, ':'cena rynkowa, ')+({cm:'Cardmarket',tp:'TCGplayer',avg:'średnia Cardmarket + TCGplayer',max:'wyższa z Cardmarket i TCGplayer'})[cfg.src||'max'];
 /* ta sama karta = ta sama nazwa, set, numer i wersja — niezależnie od bazy, z której pochodzi */
 const nk=x=>String(x||'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const cardSig=c=>nk(c.name)+'|'+nk(c.set)+'|'+String(c.number||'').toLowerCase().replace(/^0+(?=\d)/,'');
@@ -262,7 +271,7 @@ function dedupe(){
 }
 const dupMerged=dedupe();
 if(cfg.srcV!=2){cfg.src='max';cfg.srcV=2}
-if(cfg.ptV!=1){cfg.ptype='buy';cfg.ptV=1}
+if(cfg.ptV!=2){cfg.ptype='high';cfg.ptV=2}
 try{localStorage.setItem('cfg',JSON.stringify(cfg))}catch(e){}
 const val=c=>price(c.prices,c.variant);
 const save=()=>sv('kolekcja',cards);
@@ -284,7 +293,7 @@ async function api(q,extra=''){
 function fromApi(d){const tq=d.tcgplayer?.prices||{};const us=usdSplit(tq);const um=us.n||us.r||0,ur=us.r||0,ul=us.nl||us.rl||0,ulr=us.rl||0;const pr={...(d.cardmarket?.prices||{})};for(const k in pr)if(!(+pr[k]>0))delete pr[k];if(um)pr.usdMarket=um;if(ur)pr.usdRev=ur;if(ul)pr.usdLow=ul;if(ulr)pr.usdLowRev=ulr;return{id:d.id,name:d.name,number:d.number,rarity:d.rarity||'',set:d.set?.name||'',setCode:d.set?.ptcgoCode||'',total:d.set?.printedTotal||'',release:d.set?.releaseDate||'',img:d.images?.small||'',imgL:d.images?.large||'',prices:pr,tpUrl:d.tcgplayer?.url||'',cmUrl:d.cardmarket?.url||'',cmUpd:d.cardmarket?.updatedAt||'',usd:Object.values(d.tcgplayer?.prices||{})[0]?.market||0}}
 
 const TDX='https://api.tcgdex.net/v2/en';
-function tdxPrices(cm){cm=cm||{};const o={trendPrice:cm.trend,avg1:cm.avg1,avg7:cm.avg7,avg30:cm.avg30,lowPrice:cm.low,averageSellPrice:cm.avg,reverseHoloTrend:cm['trend-holo'],reverseHoloAvg30:cm['avg30-holo'],reverseHoloLow:cm['low-holo']};for(const k in o)if(!(+o[k]>0))delete o[k];return o}
+function tdxPrices(cm){cm=cm||{};const o={trendPrice:cm.trend,avg1:cm.avg1,avg7:cm.avg7,avg30:cm.avg30,lowPrice:cm.low,averageSellPrice:cm.avg,reverseHoloTrend:cm['trend-holo'],reverseHoloAvg30:cm['avg30-holo'],reverseHoloLow:cm['low-holo'],reverseHoloAvg1:cm['avg1-holo'],reverseHoloAvg7:cm['avg7-holo'],reverseHoloSell:cm['avg-holo']};for(const k in o)if(!(+o[k]>0))delete o[k];return o}
 /* cena z TCGplayer: market, a gdy go brak — mid albo najniższa oferta; dowolne nazwy wariantów */
 const usdOf=v=>v&&typeof v=='object'?(+(v.marketPrice||v.market||v.midPrice||v.mid||v.lowPrice||v.low)||0):0;
 const usdLowOf=v=>v&&typeof v=='object'?(+(v.lowPrice||v.low||v.directLowPrice||v.directLow)||0):0;
@@ -805,9 +814,9 @@ async function rate(){
 }
 
 /* ---------- ustawienia ---------- */
-$('setBtn').onclick=()=>{$('sSrc').value=cfg.src||'max';$('sPt').value=cfg.ptype||'buy';$('sRate').value=cfg.rate;$('sKey').value=cfg.key||'';$('sRateNote').textContent=cfg.rateSrc?`Kurs średni NBP z ${cfg.rateSrc}, aktualizowany automatycznie raz dziennie.`:'Kurs ustawiony ręcznie.';$('set').showModal()};
+$('setBtn').onclick=()=>{$('sSrc').value=cfg.src||'max';$('sPt').value=cfg.ptype||'high';$('sRate').value=cfg.rate;$('sKey').value=cfg.key||'';$('sRateNote').textContent=cfg.rateSrc?`Kurs średni NBP z ${cfg.rateSrc}, aktualizowany automatycznie raz dziennie.`:'Kurs ustawiony ręcznie.';$('set').showModal()};
 $('sClose').onclick=()=>$('set').close();
-$('sSave').onclick=()=>{const r=parseFloat($('sRate').value);if(r>0&&r!=cfg.rate){cfg.rate=r;cfg.rateSrc=''}cfg.key=$('sKey').value.trim();const ns=$('sSrc').value,np=$('sPt').value;const ch=ns!=(cfg.src||'max')||np!=(cfg.ptype||'buy');cfg.src=ns;cfg.ptype=np;sv('cfg',cfg);render();if(ch){sv('prevTotal',null);snapshot();render();toast('Wycena: '+srcLabel())}$('set').close()};
+$('sSave').onclick=()=>{const r=parseFloat($('sRate').value);if(r>0&&r!=cfg.rate){cfg.rate=r;cfg.rateSrc=''}cfg.key=$('sKey').value.trim();const ns=$('sSrc').value,np=$('sPt').value;const ch=ns!=(cfg.src||'max')||np!=(cfg.ptype||'high');cfg.src=ns;cfg.ptype=np;sv('cfg',cfg);render();if(ch){sv('prevTotal',null);snapshot();render();toast('Wycena: '+srcLabel())}$('set').close()};
 $('sExp').onclick=async()=>{const blob=new Blob([JSON.stringify({app:'segregator',v:1,cards},null,1)],{type:'application/json'});const name='kolekcja-'+new Date().toISOString().slice(0,10)+'.json';
   const file=new File([blob],name,{type:'application/json'});
   try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:'Kopia kolekcji'});return}}catch(e){if(e.name=='AbortError')return}
