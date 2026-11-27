@@ -682,6 +682,7 @@ function snapshot(){
 }
 function lineChart(svg,pts,tipEl,emptyMsg){
   svg._pts=pts;svg._tip=tipEl;svg._empty=emptyMsg;
+  if(tipEl&&pts.length>1)tipEl.textContent=`Teraz: ${pln(pts[pts.length-1].v)} · dotknij wykresu, żeby zobaczyć inny dzień.`;
   if(!svg._ro){svg._ro=new ResizeObserver(()=>drawChart(svg));svg._ro.observe(svg);
     const move=e=>{const p=svg._pts;if(!p||p.length<2)return;const r=svg.getBoundingClientRect();const x=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
       let best=0,bd=1e9;p.forEach((q,i)=>{const dx=Math.abs(svg._xs[i]-x);if(dx<bd){bd=dx;best=i}});
