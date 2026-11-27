@@ -250,11 +250,14 @@ async function api(q,extra=''){
   if(!r.ok)throw new Error('Błąd bazy kart ('+r.status+')');
   return (await r.json()).data||[];
 }
-function fromApi(d){const tq=d.tcgplayer?.prices||{};const um=(tq.normal||tq.holofoil||tq['1stEditionHolofoil']||tq.unlimitedHolofoil||{}).market||Object.values(tq).map(v=>v&&v.market).find(x=>x>0)||0,ur=(tq.reverseHolofoil||{}).market||0;const pr={...(d.cardmarket?.prices||{})};for(const k in pr)if(!(+pr[k]>0))delete pr[k];if(um)pr.usdMarket=um;if(ur)pr.usdRev=ur;return{id:d.id,name:d.name,number:d.number,rarity:d.rarity||'',set:d.set?.name||'',setCode:d.set?.ptcgoCode||'',total:d.set?.printedTotal||'',release:d.set?.releaseDate||'',img:d.images?.small||'',imgL:d.images?.large||'',prices:pr,tpUrl:d.tcgplayer?.url||'',cmUrl:d.cardmarket?.url||'',cmUpd:d.cardmarket?.updatedAt||'',usd:Object.values(d.tcgplayer?.prices||{})[0]?.market||0}}
+function fromApi(d){const tq=d.tcgplayer?.prices||{};const us=usdSplit(tq);const um=us.n||us.r||0,ur=us.r||0;const pr={...(d.cardmarket?.prices||{})};for(const k in pr)if(!(+pr[k]>0))delete pr[k];if(um)pr.usdMarket=um;if(ur)pr.usdRev=ur;return{id:d.id,name:d.name,number:d.number,rarity:d.rarity||'',set:d.set?.name||'',setCode:d.set?.ptcgoCode||'',total:d.set?.printedTotal||'',release:d.set?.releaseDate||'',img:d.images?.small||'',imgL:d.images?.large||'',prices:pr,tpUrl:d.tcgplayer?.url||'',cmUrl:d.cardmarket?.url||'',cmUpd:d.cardmarket?.updatedAt||'',usd:Object.values(d.tcgplayer?.prices||{})[0]?.market||0}}
 
 const TDX='https://api.tcgdex.net/v2/en';
 function tdxPrices(cm){cm=cm||{};const o={trendPrice:cm.trend,avg1:cm.avg1,avg7:cm.avg7,avg30:cm.avg30,lowPrice:cm.low,averageSellPrice:cm.avg,reverseHoloTrend:cm['trend-holo'],reverseHoloAvg30:cm['avg30-holo']};for(const k in o)if(!(+o[k]>0))delete o[k];return o}
-function tdxUsd(tp){const o={};const n=(tp.normal||tp.holo||{}).marketPrice,r=(tp.reverse||{}).marketPrice;if(n>0)o.usdMarket=n;else if(r>0)o.usdMarket=r;if(r>0)o.usdRev=r;return o}
+/* cena z TCGplayer: market, a gdy go brak — mid albo najniższa oferta; dowolne nazwy wariantów */
+const usdOf=v=>v&&typeof v=='object'?(+(v.marketPrice||v.market||v.midPrice||v.mid||v.lowPrice||v.low)||0):0;
+function usdSplit(obj){let n=0,r=0;for(const [k,v] of Object.entries(obj||{})){const x=usdOf(v);if(!(x>0))continue;if(/reverse/i.test(k))r=r||x;else if(!/1st/i.test(k))n=n||x}return{n,r}}
+function tdxUsd(tp){const o={};const {n,r}=usdSplit(tp);if(n>0)o.usdMarket=n;else if(r>0)o.usdMarket=r;if(r>0)o.usdRev=r;return o}
 function fromTdx(d,setInfo){const s=d.set||{},tp=d.pricing?.tcgplayer||{};const img=typeof d.image=='string'?d.image:'';
   return{id:'tdx:'+d.id,tid:d.id,src:'tdx',name:d.name||'',number:d.localId||'',rarity:d.rarity||'',set:s.name||setInfo?.name||'',total:s.cardCount?.official||setInfo?.total||'',release:setInfo?.rel||'',
     img:img?img+'/low.png':'',imgL:img?img+'/high.png':'',prices:Object.assign(tdxPrices(d.pricing?.cardmarket),tdxUsd(tp)),cmUrl:'',cmUpd:(d.pricing?.cardmarket?.updated||'').slice(0,10),usd:(tp.normal||tp.holo||tp.reverse||{}).marketPrice||0}}
