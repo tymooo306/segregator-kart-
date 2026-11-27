@@ -227,7 +227,7 @@ let cards=ld('kolekcja',[]),cfg=ld('cfg',{rate:4.25,key:'',rateDate:''}),stream=
 
 function toast(t){const e=$('toast');e.textContent=t;e.style.display='block';
   try{if(e.showPopover){e.setAttribute('popover','manual');if(e.matches(':popover-open'))e.hidePopover();e.showPopover()}}catch(x){}
-  clearTimeout(toast.t);toast.t=setTimeout(()=>{e.style.display='none';try{e.hidePopover&&e.matches(':popover-open')&&e.hidePopover()}catch(x){}},2800)}
+  clearTimeout(toast.t);toast.t=setTimeout(()=>{e.style.display='none';try{e.hidePopover&&e.matches(':popover-open')&&e.hidePopover()}catch(x){}},Math.max(2800,String(t).length*70))}
 const pln=e=>(e*cfg.rate).toLocaleString('pl-PL',{minimumFractionDigits:e*cfg.rate<100?2:0,maximumFractionDigits:e*cfg.rate<100?2:0})+' zł';
 /* ceny rynkowe (trend/średnie) */
 function cmPrice(p,variant){p=p||{};return variant=='reverse'?(p.reverseHoloTrend||p.reverseHoloAvg30||p.reverseHoloSell||p.trendPrice||0):(p.trendPrice||p.avg30||p.averageSellPrice||p.lowPrice||p.reverseHoloTrend||p.reverseHoloAvg30||0)}
@@ -242,6 +242,25 @@ function price(p,variant){
   const by=combine(cmBuy(p,variant),tpBuy(p,variant));return by||mk;
 }
 const srcLabel=()=>((cfg.ptype||'buy')=='buy'?'cena zakupu, ':'cena rynkowa, ')+({cm:'Cardmarket',tp:'TCGplayer',avg:'średnia Cardmarket + TCGplayer',max:'wyższa z Cardmarket i TCGplayer'})[cfg.src||'max'];
+/* ta sama karta = ta sama nazwa, set, numer i wersja — niezależnie od bazy, z której pochodzi */
+const nk=x=>String(x||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+const cardSig=c=>nk(c.name)+'|'+nk(c.set)+'|'+String(c.number||'').toLowerCase().replace(/^0+(?=\d)/,'');
+const sameCard=(a,b)=>a.id==b.id||cardSig(a)==cardSig(b);
+function dedupe(){
+  const out=[];let merged=0;
+  for(const c of cards){
+    const ex=out.find(x=>x.variant==c.variant&&sameCard(x,c));
+    if(!ex){out.push(c);continue}
+    merged++;ex.qty=(ex.qty||1)+(c.qty||1);ex.added=Math.min(ex.added||Date.now(),c.added||Date.now());
+    ex.prices=Object.assign({},c.prices||{},ex.prices||{});
+    for(const k of ['cmUrl','tpUrl','img','imgL','rarity','total','release'])if(!ex[k]&&c[k])ex[k]=c[k];
+    // wolę wpis z pierwszej bazy (ma bezpośrednie linki)
+    if(ex.src=='tdx'&&c.src!='tdx'){ex.id=c.id;delete ex.src;delete ex.tid}
+  }
+  if(merged){cards=out;try{localStorage.setItem('kolekcja',JSON.stringify(cards))}catch(e){}}
+  return merged;
+}
+const dupMerged=dedupe();
 if(cfg.srcV!=2){cfg.src='max';cfg.srcV=2}
 if(cfg.ptV!=1){cfg.ptype='buy';cfg.ptV=1}
 try{localStorage.setItem('cfg',JSON.stringify(cfg))}catch(e){}
@@ -292,6 +311,19 @@ async function tdxByNumber(num,tot){
   const out=[],seen=new Set();
   await pool([...new Set(ids)],6,async id=>{try{const d=await get(TDX+'/cards/'+encodeURIComponent(id),1);if(d&&d.id&&!seen.has(d.id)){seen.add(d.id);out.push(fromTdx(d))}}catch(e){}});
   return out;
+}
+/* karty z TCGdex bez cen TCGplayer: dopytaj pierwszą bazę po nazwie setu i numerze */
+async function enrichTp(list,onStep){
+  const need=list.filter(c=>c.src=='tdx'&&!(c.prices||{}).usdLow&&!(c.prices||{}).usdMarket);if(!need.length)return;
+  await pool(need,3,async c=>{
+    const n=String(c.number).replace(/^0+(?=\d)/,'');
+    try{const r=await api(`set.name:"${String(c.set).replace(/"/g,'')}" number:${n}`);
+      const nm=x=>String(x||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+      const d=r.find(x=>nm(x.name)==nm(c.name))||r.find(x=>nm(x.name).includes(nm(c.name))||nm(c.name).includes(nm(x.name)));
+      if(!d)return;const f=fromApi(d);const add={};for(const k of ['usdMarket','usdRev','usdLow','usdLowRev'])if(f.prices[k]&&!(c.prices||{})[k])add[k]=f.prices[k];
+      if(Object.keys(add).length){c.prices=Object.assign({},c.prices,add);if(f.tpUrl)c.tpUrl=f.tpUrl;onStep&&onStep()}
+    }catch(e){}
+  });
 }
 const tdxSetCache={};
 async function tdxSetCards(setName){
@@ -538,7 +570,7 @@ $('pq').onkeydown=$('pn').onkeydown=e=>{if(e.key=='Enter'){e.preventDefault();se
 $('pClose').onclick=()=>$('pick').close();
 $('pAdd').onclick=()=>{
   if(!selC)return;const variant=$('pVar').value,qty=Math.max(1,parseInt($('pQty').value)||1);
-  const ex=cards.find(c=>c.id==selC.id&&c.variant==variant);
+  const ex=cards.find(c=>c.variant==variant&&sameCard(c,selC));
   if(ex){ex.qty+=qty;Object.assign(ex,{prices:selC.prices,cmUpd:selC.cmUpd});toast(`Masz już tę kartę — teraz ×${ex.qty}`)}
   else{const n={...selC,variant,qty,added:Date.now()};delete n.loading;cards.push(n);toast(`Dodano: ${selC.name} (${pln(price(selC.prices,variant))})`)}
   sv('prevTotal',null);save();render();snapshot();$('pick').close();if($('sets').open&&curSet)renderSet();
@@ -546,7 +578,7 @@ $('pAdd').onclick=()=>{
 
 /* ---------- sety ---------- */
 let allSets=ld('setsCache',null),curSet=null,setCards=[];
-const owned=id=>cards.filter(c=>c.id==id).reduce((t,c)=>t+c.qty,0);
+const owned=x=>{const c=typeof x=='string'?{id:x}:x;return cards.filter(y=>c.name?sameCard(y,c):y.id==c.id).reduce((t,y)=>t+y.qty,0)};
 const numKey=n=>{const m=String(n).match(/^(\D*)(\d+)(.*)$/);return m?[m[1]?1:0,m[1],+m[2],m[3]]:[2,String(n),0,'']};
 const byNum=(a,b)=>{const x=numKey(a.number),y=numKey(b.number);return x[0]-y[0]||x[1].localeCompare(y[1])||x[2]-y[2]||x[3].localeCompare(y[3])};
 async function openSets(){
@@ -601,22 +633,23 @@ async function openTdxSet(id){
   renderSet();
   let t=0;const tick=()=>{if(Date.now()-t>700){t=Date.now();renderSet()}};
   await pool(setCards.slice(),6,async(c,k)=>{if(curSet?.id!=id)return;const f=fromTdx(await tdxCard(c.tid),info);const i=setCards.findIndex(x=>x.id==c.id);if(i>=0)setCards[i]=f;
-    cards.filter(x=>x.id==f.id).forEach(x=>Object.assign(x,{prices:f.prices,cmUpd:f.cmUpd,usd:f.usd}));tick()});
+    cards.filter(x=>x.id==f.id).forEach(x=>{const keep={};for(const k of ['usdMarket','usdRev','usdLow','usdLowRev'])if((x.prices||{})[k]&&!f.prices[k])keep[k]=x.prices[k];Object.assign(x,{prices:Object.assign({},f.prices,keep),cmUpd:f.cmUpd,usd:f.usd})});tick()});
+  try{let t=0;await enrichTp(setCards,()=>{if(Date.now()-t>700){t=Date.now();if(curSet?.id==id)renderSet()}})}catch(e){}
   if(curSet?.id!=id)return;save();render();renderSet();
 }
 function renderSet(){
   const f=$('xf').value,s=$('xs').value;
-  const have=setCards.filter(c=>owned(c.id)),tot=setCards.length;
-  const setVal=setCards.reduce((t,c)=>t+price(c.prices),0),haveVal=cards.filter(c=>setCards.some(x=>x.id==c.id)).reduce((t,c)=>t+val(c)*c.qty,0);
+  const have=setCards.filter(c=>owned(c)),tot=setCards.length;
+  const setVal=setCards.reduce((t,c)=>t+price(c.prices),0),haveVal=cards.filter(c=>setCards.some(x=>sameCard(x,c))).reduce((t,c)=>t+val(c)*c.qty,0);
   $('xBar').style.width=(tot?have.length/tot*100:0)+'%';
   $('xProg').textContent=`Masz ${have.length} z ${tot} kart (${tot?Math.round(have.length/tot*100):0}%) · Twoje: ${pln(haveVal)} · cały set (po 1 szt.): ${pln(setVal)}`;
   const qq=($('xs2').value||'').trim().toLowerCase(),qn=qq.replace(/^#/,'').replace(/^0+(?=\d)/,'');
-  let list=setCards.filter(c=>f=='all'||(f=='have')==!!owned(c.id));
+  let list=setCards.filter(c=>f=='all'||(f=='have')==!!owned(c));
   if(qq)list=list.filter(c=>{const num=String(c.number).toLowerCase().replace(/^0+(?=\d)/,'');return c.name.toLowerCase().includes(qq)||num==qn||num.split('/')[0]==qn.split('/')[0]||(c.rarity||'').toLowerCase().includes(qq)});
   list.sort(s=='val'?(a,b)=>price(b.prices)-price(a.prices):byNum);
-  $('xGrid').innerHTML=list.length?list.map(c=>{const o=owned(c.id);return`<button class="c${o?'':' miss'}" data-id="${esc(c.id)}"><div class="im">${c.img.startsWith('https://')?`<img loading="lazy" src="${esc(c.img)}" alt="">`:''}${o?`<span class="ok">✓${o>1?' ×'+o:''}</span>`:''}<span class="v">${price(c.prices)?esc(pln(price(c.prices))):(c.loading?'…':'—')}</span></div><h3>${esc(c.name)}</h3><p>${esc(c.number)}${c.total?'/'+esc(c.total):''}${c.rarity?' · '+esc(c.rarity):''}</p></button>`}).join(''):`<div class="empty" style="grid-column:1/-1">${qq?'Brak kart pasujących do „'+esc(qq)+'”.':f=='miss'?'Masz komplet! 🎉':'Brak kart do pokazania.'}</div>`;
+  $('xGrid').innerHTML=list.length?list.map(c=>{const o=owned(c);return`<button class="c${o?'':' miss'}" data-id="${esc(c.id)}"><div class="im">${c.img.startsWith('https://')?`<img loading="lazy" src="${esc(c.img)}" alt="">`:''}${o?`<span class="ok">✓${o>1?' ×'+o:''}</span>`:''}<span class="v">${price(c.prices)?esc(pln(price(c.prices))):(c.loading?'…':'—')}</span></div><h3>${esc(c.name)}</h3><p>${esc(c.number)}${c.total?'/'+esc(c.total):''}${c.rarity?' · '+esc(c.rarity):''}</p></button>`}).join(''):`<div class="empty" style="grid-column:1/-1">${qq?'Brak kart pasujących do „'+esc(qq)+'”.':f=='miss'?'Masz komplet! 🎉':'Brak kart do pokazania.'}</div>`;
 }
-$('xGrid').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const c=setCards.find(x=>x.id==b.dataset.id);if(!c)return;const mine=cards.find(x=>x.id==c.id);openCard(mine?Object.assign(mine,{prices:c.prices}):c,mine||null)};
+$('xGrid').onclick=e=>{const b=e.target.closest('.c');if(!b)return;const c=setCards.find(x=>x.id==b.dataset.id);if(!c)return;const mine=cards.find(x=>sameCard(x,c));openCard(mine?Object.assign(mine,{prices:c.prices}):c,mine||null)};
 $('xList').onclick=e=>{const b=e.target.closest('.srow');if(b)openSet(b.dataset.id)};
 $('xq').oninput=()=>allSets&&renderSets();$('xf').onchange=$('xs').onchange=renderSet;$('xs2').oninput=renderSet;
 $('xBack').onclick=()=>{curSet=null;$('vSet').hidden=true;$('vList').hidden=false;renderSets()};
@@ -700,19 +733,21 @@ function openCard(c,mine){
   $('dBars').innerHTML=bars.length?bars.map(b=>`<div class="brow"><span>${b[0]}</span><i style="width:${Math.max(4,b[1]/mx*100).toFixed(0)}%"></i><b>${esc(pln(b[1]))}</b></div>`).join('')+(bars.length>1&&p.avg30&&p.trendPrice?`<div class="small">${p.trendPrice>=p.avg30?'▲':'▼'} ${Math.abs((p.trendPrice/p.avg30-1)*100).toFixed(0)}% względem średniej z 30 dni</div>`:''):'';
   const rows=[];
   const cb=cmBuy(p,variant),tb=tpBuy(p,variant),cmv=cmPrice(p,variant),tpv=tpPrice(p,variant);
-  rows.push(['§Cena zakupu teraz (najtańsza oferta)'],[p.lowPriceExPlus&&variant!='reverse'?'Cardmarket — od (stan EX+)':'Cardmarket — od',cb],['TCGplayer — od (USA)',tb]);
-  rows.push(['§Cena rynkowa'],['Cardmarket — trend',cmv],['TCGplayer — market (USA)',tpv]);
+  rows.push(['§Cena zakupu teraz (najtańsza oferta)'],[p.lowPriceExPlus&&variant!='reverse'?'Cardmarket — od (stan EX+)':'Cardmarket — od',cb||'brak danych w bazie'],['TCGplayer — od (USA)',tb||'brak danych w bazie']);
+  rows.push(['§Cena rynkowa'],['Cardmarket — trend',cmv||'brak danych w bazie'],['TCGplayer — market (USA)',tpv||'brak danych w bazie']);
   if(variant!='reverse'&&p.reverseHoloTrend)rows.push(['Reverse Holo — trend',p.reverseHoloTrend]);
   const tr=r=>r[0][0]=='§'?`<tr><td colspan="2" class="small" style="padding-top:10px;font-weight:700">${esc(r[0].slice(1))}</td></tr>`:'';
-  $('dTab').innerHTML=`<tr><td colspan="2" class="small">Wycena w aplikacji: ${esc(srcLabel())}</td></tr>`+rows.filter(r=>r[0][0]=='§'||r[1]>0).map(r=>r[0][0]=='§'?tr(r):`<tr><td>${esc(r[0])}</td><td>${esc(pln(r[1]))} <span class="small">(${(+r[1]).toFixed(2)} €)</span></td></tr>`).join('')+(c.cmUpd?`<tr><td class="small">Dane z dnia</td><td class="small">${esc(c.cmUpd)}</td></tr>`:'')+(!bars.length&&!rows.length?'<tr><td>Brak cen dla tej karty w bazach.</td><td></td></tr>':'');
+  $('dTab').innerHTML=`<tr><td colspan="2" class="small">Wycena w aplikacji: ${esc(srcLabel())}</td></tr>`+rows.filter(r=>r[0][0]=='§'||r[1]>0||typeof r[1]=='string').map(r=>r[0][0]=='§'?tr(r):typeof r[1]=='string'?`<tr><td>${esc(r[0])}</td><td class="small" style="font-weight:400">${esc(r[1])}</td></tr>`:`<tr><td>${esc(r[0])}</td><td>${esc(pln(r[1]))} <span class="small">(${(+r[1]).toFixed(2)} €)</span></td></tr>`).join('')+(c.cmUpd?`<tr><td class="small">Dane z dnia</td><td class="small">${esc(c.cmUpd)}</td></tr>`:'')+(!bars.length&&!rows.length?'<tr><td>Brak cen dla tej karty w bazach.</td><td></td></tr>':'');
   recCard(c,variant);sv('chist',chist);
   const hp=(chist[cardKey(c,variant)]||[]).map(x=>({t:new Date(x[0]+'T12:00').getTime(),v:x[1]}));
   $('dTip').textContent=hp.length>1?'Dotknij wykresu, żeby zobaczyć cenę z danego dnia.':'Aplikacja zapisuje cenę tej karty codziennie przy odświeżaniu — wykres będzie rósł z czasem.';
   $('dVar').value=variant;$('dQty').value=mine?mine.qty:1;
   $('dOwnBtns').hidden=!mine;$('dAddBtns').hidden=!!mine;$('dDel').textContent='Usuń z kolekcji';
-  const o=owned(c.id);$('dOwnNote').textContent=!mine&&o?`Masz już ${o} szt. tej karty — dodanie zwiększy ilość.`:'';
+  const o=owned(c);$('dOwnNote').textContent=!mine&&o?`Masz już ${o} szt. tej karty — dodanie zwiększy ilość.`:'';
   $('det').showModal();$('det').scrollTop=0;
   lineChart($('dSvg'),hp,$('dTip'),'Historia zbiera się od dziś');
+  if(c.src=='tdx'&&!(c.prices||{}).usdLow&&!(c.prices||{}).usdMarket&&!retrying.has('tp'+c.id)){retrying.add('tp'+c.id);
+    enrichTp([c]).then(()=>{if((c.prices||{}).usdLow||(c.prices||{}).usdMarket){cards.filter(x=>x.id==c.id&&x!==c).forEach(x=>x.prices=Object.assign({},x.prices,c.prices));save();render();if($('det').open&&viewC===c)openCard(c,mine)}}).finally(()=>setTimeout(()=>retrying.delete('tp'+c.id),60000))}
   if(!price(c.prices)&&!retrying.has(c.id)){retrying.add(c.id);$('dVal').textContent='pobieram cenę…';
     (async()=>{try{let f=null;
       if(c.tid)f=fromTdx(await tdxCard(c.tid));
@@ -726,32 +761,40 @@ $('dZoom').onclick=()=>{if($('zImg').src){$('zoom').hidden=false;try{$('zoom').s
 $('zoom').onclick=()=>{$('zoom').hidden=true;try{$('zoom').hidePopover()}catch(e){}};
 $('dClose').onclick=()=>$('det').close();
 $('dVar').onchange=()=>{if(viewC){const pv=price(viewC.prices,$('dVar').value);$('dVal').textContent=pv?pln(pv*(cur?cur.qty:1)):'brak ceny'}};
-$('dSave').onclick=()=>{if(!cur)return;const v=$('dVar').value,q=Math.max(1,parseInt($('dQty').value)||1);const other=cards.find(c=>c!==cur&&c.id==cur.id&&c.variant==v);
+$('dSave').onclick=()=>{if(!cur)return;const v=$('dVar').value,q=Math.max(1,parseInt($('dQty').value)||1);const other=cards.find(c=>c!==cur&&c.variant==v&&sameCard(c,cur));
   if(other){other.qty+=q;cards=cards.filter(c=>c!==cur)}else{cur.variant=v;cur.qty=q}sv('prevTotal',null);save();render();snapshot();$('det').close();if($('sets').open&&curSet)renderSet()};
 $('dDel').onclick=()=>{if(!cur)return;if($('dDel').textContent!='Na pewno?'){$('dDel').textContent='Na pewno?';return}cards=cards.filter(c=>c!==cur);sv('prevTotal',null);save();render();snapshot();$('det').close();toast('Usunięto kartę');if($('sets').open&&curSet)renderSet()};
 $('dAdd').onclick=()=>{const c=viewC;if(!c)return;const variant=$('dVar').value,qty=Math.max(1,parseInt($('dQty').value)||1);
-  const ex=cards.find(x=>x.id==c.id&&x.variant==variant);
+  const ex=cards.find(x=>x.variant==variant&&sameCard(x,c));
   if(ex){ex.qty+=qty;ex.prices=c.prices;toast(`Masz już tę kartę — teraz ×${ex.qty}`)}else{const n={...c,variant,qty,added:Date.now()};delete n.loading;cards.push(n);toast(`Dodano: ${c.name}`)}
   sv('prevTotal',null);save();render();snapshot();$('det').close();if($('sets').open&&curSet)renderSet()};
 
 /* ---------- odświeżanie cen ---------- */
 async function refresh(silent){
   if(!cards.length)return;$('refresh').disabled=true;if(!silent)toast('Odświeżam ceny…');
-  const before=cards.reduce((t,c)=>t+val(c)*c.qty,0);let ok=0,fail=0;
+  const before=cards.reduce((t,c)=>t+val(c)*c.qty,0);let ok=0,fail=0;const failed=new Set(),failedT=new Set();
   const apply=f=>{cards.filter(c=>c.id==f.id).forEach(c=>Object.assign(c,{prices:f.prices,cmUrl:f.cmUrl,cmUpd:f.cmUpd,usd:f.usd,img:f.img||c.img,imgL:f.imgL||c.imgL,tpUrl:f.tpUrl||c.tpUrl}));ok++};
   const ids=[...new Set(cards.filter(c=>c.src!='tdx').map(c=>c.id))];
   // małe paczki; gdy paczka się nie uda — karta po karcie; błędy nie przerywają odświeżania
   for(let i=0;i<ids.length;i+=12){
     const part=ids.slice(i,i+12);
     try{const res=await api('('+part.map(id=>`id:"${id}"`).join(' OR ')+')','&pageSize=250');res.forEach(d=>apply(fromApi(d)))}
-    catch(e){await pool(part,3,async id=>{try{const j=await get(API+'/'+encodeURIComponent(id)+'?select='+FIELDS);if(j&&j.data)apply(fromApi(j.data))}catch(e2){fail++}})}
+    catch(e){await pool(part,3,async id=>{try{const j=await get(API+'/'+encodeURIComponent(id)+'?select='+FIELDS);if(j&&j.data)apply(fromApi(j.data))}catch(e2){failed.add(id)}})}
   }
+  // druga próba dla kart, które się nie udały (np. chwilowy limit zapytań)
+  if(failed.size){await new Promise(z=>setTimeout(z,2500));await pool([...failed],2,async id=>{try{const j=await get(API+'/'+encodeURIComponent(id)+'?select='+FIELDS);if(j&&j.data){apply(fromApi(j.data));failed.delete(id)}}catch(e){}})}
   try{await enrich(cards)}catch(e){}
   const tids=[...new Set(cards.filter(c=>c.src=='tdx').map(c=>c.tid))];
-  await pool(tids,6,async tid=>{try{const f=fromTdx(await tdxCard(tid));cards.filter(c=>c.id==f.id).forEach(c=>Object.assign(c,{prices:f.prices,cmUpd:f.cmUpd,usd:f.usd,rarity:f.rarity||c.rarity}));ok++}catch(e){fail++}});
+  const upT=async tid=>{const f=fromTdx(await tdxCard(tid));cards.filter(c=>c.id==f.id).forEach(c=>{const keep={};for(const k of ['usdMarket','usdRev','usdLow','usdLowRev'])if((c.prices||{})[k]&&!f.prices[k])keep[k]=c.prices[k];Object.assign(c,{prices:Object.assign({},f.prices,keep),cmUpd:f.cmUpd,usd:f.usd,rarity:f.rarity||c.rarity})});ok++};
+  await pool(tids,6,async tid=>{try{await upT(tid)}catch(e){failedT.add(tid)}});
+  if(failedT.size){await new Promise(z=>setTimeout(z,2500));await pool([...failedT],2,async tid=>{try{await upT(tid);failedT.delete(tid)}catch(e){}})}
+  try{await enrichTp(cards)}catch(e){}
+  // karta z ceną z drugiej bazy nie jest „pominięta”
+  for(const id of [...failed]){const c=cards.find(x=>x.id==id);if(c&&c.cmUpd&&String(c.cmUpd).slice(0,10).replace(/\//g,'-')==today())failed.delete(id)}
+  fail=failed.size+failedT.size;const names=[...cards.filter(c=>failed.has(c.id)||failedT.has(c.tid))].map(c=>c.name).filter((v,i,a)=>a.indexOf(v)==i);
   if(ok){sv('prevTotal',before);sv('lastUpd',Date.now())}
   save();render();snapshot();
-  if(!silent)toast(!ok?'Bazy kart nie odpowiadają — spróbuj za chwilę':fail?`Zaktualizowano ceny (${fail} kart pominięto — błąd bazy)`:'Ceny zaktualizowane');
+  if(!silent)toast(!ok?'Bazy kart nie odpowiadają — spróbuj za chwilę':fail?`Zaktualizowano. Bez nowej ceny (${fail}): ${names.slice(0,3).join(', ')}${names.length>3?'…':''} — zostaje ostatnia znana`:'Ceny zaktualizowane');
   $('refresh').disabled=false;
 }
 $('refresh').onclick=()=>refresh();
@@ -771,10 +814,10 @@ $('sExp').onclick=async()=>{const blob=new Blob([JSON.stringify({app:'segregator
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)};
 $('sImp').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const j=JSON.parse(await f.text());if(!Array.isArray(j.cards))throw 0;
   const ok=j.cards.filter(c=>c&&typeof c.id=='string'&&typeof c.name=='string').map(c=>({...c,qty:Math.max(1,parseInt(c.qty)||1),variant:c.variant=='reverse'?'reverse':'normal',img:String(c.img||''),imgL:String(c.imgL||''),added:+c.added||Date.now()}));
-  for(const c of ok){const ex=cards.find(x=>x.id==c.id&&x.variant==c.variant);if(ex)ex.qty=Math.max(ex.qty,c.qty);else cards.push(c)}save();render();toast(`Zaimportowano ${ok.length} kart`);$('set').close()}catch(err){toast('To nie jest plik kopii kolekcji')}};
+  for(const c of ok){const ex=cards.find(x=>x.variant==c.variant&&sameCard(x,c));if(ex)ex.qty=Math.max(ex.qty,c.qty);else cards.push(c)}save();render();toast(`Zaimportowano ${ok.length} kart`);$('set').close()}catch(err){toast('To nie jest plik kopii kolekcji')}};
 
 $('q').oninput=render;$('sort').onchange=render;
-render();snapshot();drawHist();rate().then(()=>{if(!cfg.usd2eur)rateUsd()});
+render();snapshot();drawHist();if(dupMerged)setTimeout(()=>toast(`Połączono ${dupMerged} ${dupMerged==1?'zdublowaną pozycję':(dupMerged%10>=2&&dupMerged%10<=4&&(dupMerged%100<10||dupMerged%100>=20))?'zdublowane pozycje':'zdublowanych pozycji'} w kolekcji`),600);rate().then(()=>{if(!cfg.usd2eur)rateUsd()});
 if(Date.now()-ld('lastUpd',0)>6*3600e3)refresh(true);
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
