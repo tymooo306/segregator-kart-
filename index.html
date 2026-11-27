@@ -170,7 +170,7 @@ dialog.full .sh{padding-top:calc(var(--st) + 14px)}
   <div><h2 id="dName"></h2><div class="small" id="dMeta"></div></div>
   <div class="row"><span class="big" style="font-size:36px" id="dVal"></span><span class="small" id="dEach"></span></div>
   <div class="links" id="dLinks"></div>
-  <h3 class="sub">Ceny na Cardmarket</h3>
+  <h3 class="sub">Ceny rynkowe na Cardmarket</h3>
   <div id="dBars"></div>
   <table id="dTab"></table>
   <h3 class="sub">Historia ceny</h3>
@@ -187,6 +187,7 @@ dialog.full .sh{padding-top:calc(var(--st) + 14px)}
   <h2>Ustawienia</h2>
   <label>Kurs EUR → PLN<input id="sRate" type="number" step="0.0001" inputmode="decimal"></label>
   <div class="note" id="sRateNote"></div>
+  <label>Rodzaj ceny<select id="sPt"><option value="buy">Cena zakupu teraz (najtańsza oferta)</option><option value="market">Cena rynkowa (trend / market)</option></select></label>
   <label>Sposób wyceny<select id="sSrc"><option value="max">Wyższa cena z Cardmarket i TCGplayer</option><option value="avg">Średnia Cardmarket + TCGplayer</option><option value="cm">Tylko Cardmarket (Europa)</option><option value="tp">Tylko TCGplayer (USA)</option></select></label>
   <div class="note">Gdy karta ma cenę tylko w jednym serwisie, aplikacja używa tej jednej.</div>
   <label>Klucz API Pokémon TCG (opcjonalny, większy limit zapytań)<input id="sKey" autocomplete="off" placeholder="z dev.pokemontcg.io"></label>
@@ -228,11 +229,22 @@ function toast(t){const e=$('toast');e.textContent=t;e.style.display='block';
   try{if(e.showPopover){e.setAttribute('popover','manual');if(e.matches(':popover-open'))e.hidePopover();e.showPopover()}}catch(x){}
   clearTimeout(toast.t);toast.t=setTimeout(()=>{e.style.display='none';try{e.hidePopover&&e.matches(':popover-open')&&e.hidePopover()}catch(x){}},2800)}
 const pln=e=>(e*cfg.rate).toLocaleString('pl-PL',{minimumFractionDigits:e*cfg.rate<100?2:0,maximumFractionDigits:e*cfg.rate<100?2:0})+' zł';
+/* ceny rynkowe (trend/średnie) */
 function cmPrice(p,variant){p=p||{};return variant=='reverse'?(p.reverseHoloTrend||p.reverseHoloAvg30||p.reverseHoloSell||p.trendPrice||0):(p.trendPrice||p.avg30||p.averageSellPrice||p.lowPrice||p.reverseHoloTrend||p.reverseHoloAvg30||0)}
 function tpPrice(p,variant){p=p||{};const u=variant=='reverse'?(p.usdRev||p.usdMarket):(p.usdMarket||p.usdRev);return (u||0)*(cfg.usd2eur||0.92)}
-function price(p,variant){const a=cmPrice(p,variant),b=tpPrice(p,variant),m=cfg.src||'max';if(m=='cm')return a||b;if(m=='tp')return b||a;if(m=='max')return Math.max(a,b);return a&&b?(a+b)/2:(a||b)}
-const srcLabel=()=>({cm:'Cardmarket',tp:'TCGplayer',avg:'średnia Cardmarket + TCGplayer',max:'wyższa z Cardmarket i TCGplayer'})[cfg.src||'max'];
-if(cfg.srcV!=2){cfg.src='max';cfg.srcV=2;try{localStorage.setItem('cfg',JSON.stringify(cfg))}catch(e){}}
+/* ceny zakupu teraz (najtańsza oferta; na Cardmarket w stanie EX lub lepszym, jeśli znana) */
+function cmBuy(p,variant){p=p||{};return variant=='reverse'?(p.reverseHoloLow||p.lowPriceExPlus||p.lowPrice||0):(p.lowPriceExPlus||p.lowPrice||p.reverseHoloLow||0)}
+function tpBuy(p,variant){p=p||{};const u=variant=='reverse'?(p.usdLowRev||p.usdLow):(p.usdLow||p.usdLowRev);return (u||0)*(cfg.usd2eur||0.92)}
+function combine(a,b){const m=cfg.src||'max';if(m=='cm')return a||b;if(m=='tp')return b||a;if(m=='max')return Math.max(a,b);return a&&b?(a+b)/2:(a||b)}
+function price(p,variant){
+  const mk=combine(cmPrice(p,variant),tpPrice(p,variant));
+  if((cfg.ptype||'buy')=='market')return mk;
+  const by=combine(cmBuy(p,variant),tpBuy(p,variant));return by||mk;
+}
+const srcLabel=()=>((cfg.ptype||'buy')=='buy'?'cena zakupu, ':'cena rynkowa, ')+({cm:'Cardmarket',tp:'TCGplayer',avg:'średnia Cardmarket + TCGplayer',max:'wyższa z Cardmarket i TCGplayer'})[cfg.src||'max'];
+if(cfg.srcV!=2){cfg.src='max';cfg.srcV=2}
+if(cfg.ptV!=1){cfg.ptype='buy';cfg.ptV=1}
+try{localStorage.setItem('cfg',JSON.stringify(cfg))}catch(e){}
 const val=c=>price(c.prices,c.variant);
 const save=()=>sv('kolekcja',cards);
 
@@ -250,14 +262,15 @@ async function api(q,extra=''){
   if(!r.ok)throw new Error('Błąd bazy kart ('+r.status+')');
   return (await r.json()).data||[];
 }
-function fromApi(d){const tq=d.tcgplayer?.prices||{};const us=usdSplit(tq);const um=us.n||us.r||0,ur=us.r||0;const pr={...(d.cardmarket?.prices||{})};for(const k in pr)if(!(+pr[k]>0))delete pr[k];if(um)pr.usdMarket=um;if(ur)pr.usdRev=ur;return{id:d.id,name:d.name,number:d.number,rarity:d.rarity||'',set:d.set?.name||'',setCode:d.set?.ptcgoCode||'',total:d.set?.printedTotal||'',release:d.set?.releaseDate||'',img:d.images?.small||'',imgL:d.images?.large||'',prices:pr,tpUrl:d.tcgplayer?.url||'',cmUrl:d.cardmarket?.url||'',cmUpd:d.cardmarket?.updatedAt||'',usd:Object.values(d.tcgplayer?.prices||{})[0]?.market||0}}
+function fromApi(d){const tq=d.tcgplayer?.prices||{};const us=usdSplit(tq);const um=us.n||us.r||0,ur=us.r||0,ul=us.nl||us.rl||0,ulr=us.rl||0;const pr={...(d.cardmarket?.prices||{})};for(const k in pr)if(!(+pr[k]>0))delete pr[k];if(um)pr.usdMarket=um;if(ur)pr.usdRev=ur;if(ul)pr.usdLow=ul;if(ulr)pr.usdLowRev=ulr;return{id:d.id,name:d.name,number:d.number,rarity:d.rarity||'',set:d.set?.name||'',setCode:d.set?.ptcgoCode||'',total:d.set?.printedTotal||'',release:d.set?.releaseDate||'',img:d.images?.small||'',imgL:d.images?.large||'',prices:pr,tpUrl:d.tcgplayer?.url||'',cmUrl:d.cardmarket?.url||'',cmUpd:d.cardmarket?.updatedAt||'',usd:Object.values(d.tcgplayer?.prices||{})[0]?.market||0}}
 
 const TDX='https://api.tcgdex.net/v2/en';
-function tdxPrices(cm){cm=cm||{};const o={trendPrice:cm.trend,avg1:cm.avg1,avg7:cm.avg7,avg30:cm.avg30,lowPrice:cm.low,averageSellPrice:cm.avg,reverseHoloTrend:cm['trend-holo'],reverseHoloAvg30:cm['avg30-holo']};for(const k in o)if(!(+o[k]>0))delete o[k];return o}
+function tdxPrices(cm){cm=cm||{};const o={trendPrice:cm.trend,avg1:cm.avg1,avg7:cm.avg7,avg30:cm.avg30,lowPrice:cm.low,averageSellPrice:cm.avg,reverseHoloTrend:cm['trend-holo'],reverseHoloAvg30:cm['avg30-holo'],reverseHoloLow:cm['low-holo']};for(const k in o)if(!(+o[k]>0))delete o[k];return o}
 /* cena z TCGplayer: market, a gdy go brak — mid albo najniższa oferta; dowolne nazwy wariantów */
 const usdOf=v=>v&&typeof v=='object'?(+(v.marketPrice||v.market||v.midPrice||v.mid||v.lowPrice||v.low)||0):0;
-function usdSplit(obj){let n=0,r=0;for(const [k,v] of Object.entries(obj||{})){const x=usdOf(v);if(!(x>0))continue;if(/reverse/i.test(k))r=r||x;else if(!/1st/i.test(k))n=n||x}return{n,r}}
-function tdxUsd(tp){const o={};const {n,r}=usdSplit(tp);if(n>0)o.usdMarket=n;else if(r>0)o.usdMarket=r;if(r>0)o.usdRev=r;return o}
+const usdLowOf=v=>v&&typeof v=='object'?(+(v.lowPrice||v.low||v.directLowPrice||v.directLow)||0):0;
+function usdSplit(obj){let n=0,r=0,nl=0,rl=0;for(const [k,v] of Object.entries(obj||{})){const x=usdOf(v),l=usdLowOf(v);if(/reverse/i.test(k)){r=r||x;rl=rl||l}else if(!/1st/i.test(k)){n=n||x;nl=nl||l}}return{n,r,nl,rl}}
+function tdxUsd(tp){const o={};const {n,r,nl,rl}=usdSplit(tp);if(n>0)o.usdMarket=n;else if(r>0)o.usdMarket=r;if(r>0)o.usdRev=r;if(nl>0)o.usdLow=nl;else if(rl>0)o.usdLow=rl;if(rl>0)o.usdLowRev=rl;return o}
 function fromTdx(d,setInfo){const s=d.set||{},tp=d.pricing?.tcgplayer||{};const img=typeof d.image=='string'?d.image:'';
   return{id:'tdx:'+d.id,tid:d.id,src:'tdx',name:d.name||'',number:d.localId||'',rarity:d.rarity||'',set:s.name||setInfo?.name||'',total:s.cardCount?.official||setInfo?.total||'',release:setInfo?.rel||'',
     img:img?img+'/low.png':'',imgL:img?img+'/high.png':'',prices:Object.assign(tdxPrices(d.pricing?.cardmarket),tdxUsd(tp)),cmUrl:'',cmUpd:(d.pricing?.cardmarket?.updated||'').slice(0,10),usd:(tp.normal||tp.holo||tp.reverse||{}).marketPrice||0}}
@@ -299,7 +312,7 @@ async function enrich(list,onStep){
       const m=tc.find(x=>String(x.localId).toUpperCase()==n&&okName(x))||tc.find(x=>/^\d+$/.test(n)&&/^\d+$/.test(x.localId)&&parseInt(x.localId,10)==parseInt(n,10)&&okName(x));
       if(!m)return;const d=await tdxCard(m.id);if(!okName(d))return;const pr=tdxPrices(d.pricing?.cardmarket);
       const add={};if(!hasCM(c.prices)&&hasCM(pr)){Object.assign(add,pr);c.cmUpd=(d.pricing.cardmarket.updated||'').slice(0,10);got++}
-      const u=tdxUsd(d.pricing?.tcgplayer||{});if(!(c.prices||{}).usdMarket)Object.assign(add,u);
+      const u=tdxUsd(d.pricing?.tcgplayer||{});for(const k in u)if(!(c.prices||{})[k])add[k]=u[k];
       if(Object.keys(add).length){c.prices=Object.assign({},c.prices,add);onStep&&onStep()}
     });
   }
@@ -685,11 +698,13 @@ function openCard(c,mine){
   const p=c.prices||{};
   const bars=[['Średnia 30 dni',p.avg30],['Średnia 7 dni',p.avg7],['Wczoraj',p.avg1],['Trend',p.trendPrice]].filter(r=>r[1]>0),mx=Math.max(...bars.map(b=>b[1]),0);
   $('dBars').innerHTML=bars.length?bars.map(b=>`<div class="brow"><span>${b[0]}</span><i style="width:${Math.max(4,b[1]/mx*100).toFixed(0)}%"></i><b>${esc(pln(b[1]))}</b></div>`).join('')+(bars.length>1&&p.avg30&&p.trendPrice?`<div class="small">${p.trendPrice>=p.avg30?'▲':'▼'} ${Math.abs((p.trendPrice/p.avg30-1)*100).toFixed(0)}% względem średniej z 30 dni</div>`:''):'';
-  const rows=[['Najniższa oferta',p.lowPrice],['Reverse Holo — trend',p.reverseHoloTrend]].filter(r=>r[1]>0);
-  const cmv=cmPrice(p,variant),tpv=tpPrice(p,variant);
-  rows.unshift(['Cardmarket (Europa)',cmv],['TCGplayer (USA, po kursie NBP)',tpv]);
-  if(cmv&&tpv)rows.push(['Różnica między rynkami',Math.abs(cmv-tpv)]);
-  $('dTab').innerHTML=`<tr><td colspan="2" class="small">Wycena w aplikacji: ${esc(srcLabel())}</td></tr>`+rows.filter(r=>r[1]>0).map(r=>`<tr><td>${r[0]}</td><td>${esc(pln(r[1]))} <span class="small">(${(+r[1]).toFixed(2)} €)</span></td></tr>`).join('')+(c.cmUpd?`<tr><td class="small">Dane z dnia</td><td class="small">${esc(c.cmUpd)}</td></tr>`:'')+(!bars.length&&!rows.length?'<tr><td>Brak cen dla tej karty w bazach.</td><td></td></tr>':'');
+  const rows=[];
+  const cb=cmBuy(p,variant),tb=tpBuy(p,variant),cmv=cmPrice(p,variant),tpv=tpPrice(p,variant);
+  rows.push(['§Cena zakupu teraz (najtańsza oferta)'],[p.lowPriceExPlus&&variant!='reverse'?'Cardmarket — od (stan EX+)':'Cardmarket — od',cb],['TCGplayer — od (USA)',tb]);
+  rows.push(['§Cena rynkowa'],['Cardmarket — trend',cmv],['TCGplayer — market (USA)',tpv]);
+  if(variant!='reverse'&&p.reverseHoloTrend)rows.push(['Reverse Holo — trend',p.reverseHoloTrend]);
+  const tr=r=>r[0][0]=='§'?`<tr><td colspan="2" class="small" style="padding-top:10px;font-weight:700">${esc(r[0].slice(1))}</td></tr>`:'';
+  $('dTab').innerHTML=`<tr><td colspan="2" class="small">Wycena w aplikacji: ${esc(srcLabel())}</td></tr>`+rows.filter(r=>r[0][0]=='§'||r[1]>0).map(r=>r[0][0]=='§'?tr(r):`<tr><td>${esc(r[0])}</td><td>${esc(pln(r[1]))} <span class="small">(${(+r[1]).toFixed(2)} €)</span></td></tr>`).join('')+(c.cmUpd?`<tr><td class="small">Dane z dnia</td><td class="small">${esc(c.cmUpd)}</td></tr>`:'')+(!bars.length&&!rows.length?'<tr><td>Brak cen dla tej karty w bazach.</td><td></td></tr>':'');
   recCard(c,variant);sv('chist',chist);
   const hp=(chist[cardKey(c,variant)]||[]).map(x=>({t:new Date(x[0]+'T12:00').getTime(),v:x[1]}));
   $('dTip').textContent=hp.length>1?'Dotknij wykresu, żeby zobaczyć cenę z danego dnia.':'Aplikacja zapisuje cenę tej karty codziennie przy odświeżaniu — wykres będzie rósł z czasem.';
@@ -747,9 +762,9 @@ async function rate(){
 }
 
 /* ---------- ustawienia ---------- */
-$('setBtn').onclick=()=>{$('sSrc').value=cfg.src||'max';$('sRate').value=cfg.rate;$('sKey').value=cfg.key||'';$('sRateNote').textContent=cfg.rateSrc?`Kurs średni NBP z ${cfg.rateSrc}, aktualizowany automatycznie raz dziennie.`:'Kurs ustawiony ręcznie.';$('set').showModal()};
+$('setBtn').onclick=()=>{$('sSrc').value=cfg.src||'max';$('sPt').value=cfg.ptype||'buy';$('sRate').value=cfg.rate;$('sKey').value=cfg.key||'';$('sRateNote').textContent=cfg.rateSrc?`Kurs średni NBP z ${cfg.rateSrc}, aktualizowany automatycznie raz dziennie.`:'Kurs ustawiony ręcznie.';$('set').showModal()};
 $('sClose').onclick=()=>$('set').close();
-$('sSave').onclick=()=>{const r=parseFloat($('sRate').value);if(r>0&&r!=cfg.rate){cfg.rate=r;cfg.rateSrc=''}cfg.key=$('sKey').value.trim();const ns=$('sSrc').value;const ch=ns!=(cfg.src||'max');cfg.src=ns;sv('cfg',cfg);render();if(ch){sv('prevTotal',null);snapshot();render();toast('Wycena: '+srcLabel())}$('set').close()};
+$('sSave').onclick=()=>{const r=parseFloat($('sRate').value);if(r>0&&r!=cfg.rate){cfg.rate=r;cfg.rateSrc=''}cfg.key=$('sKey').value.trim();const ns=$('sSrc').value,np=$('sPt').value;const ch=ns!=(cfg.src||'max')||np!=(cfg.ptype||'buy');cfg.src=ns;cfg.ptype=np;sv('cfg',cfg);render();if(ch){sv('prevTotal',null);snapshot();render();toast('Wycena: '+srcLabel())}$('set').close()};
 $('sExp').onclick=async()=>{const blob=new Blob([JSON.stringify({app:'segregator',v:1,cards},null,1)],{type:'application/json'});const name='kolekcja-'+new Date().toISOString().slice(0,10)+'.json';
   const file=new File([blob],name,{type:'application/json'});
   try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:'Kopia kolekcji'});return}}catch(e){if(e.name=='AbortError')return}
